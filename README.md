@@ -16,7 +16,7 @@ PPO/GRU 配置仍待迁移。
 
 ## 目标
 
-本仓库只负责 IsaacLab 版 SerialLeg flat 训练迁移，不把旧仓库 `/home/am345/se3_rl` 作为运行时依赖。
+本仓库只负责 IsaacLab 版 SerialLeg flat 训练迁移，不把可选的旧仓库 `../se3_rl` 作为运行时依赖。
 
 旧仓库只作为迁移参考，用来对齐：
 
@@ -36,6 +36,12 @@ PPO/GRU 配置仍待迁移。
 
 当前 `velocity_height` command term 尚未迁移，因此 command 相关的 5D + 3D 槽位暂时显式输出零；后续接入该 term 后会严格要求 8D command，维度不符直接报错。
 
+当前基础验收阶段采用收敛范围：奖励只配置 IsaacLab 官方 manager-based locomotion 基础项，用于先确认
+SerialLeg 迁移到 Isaac Sim 后的速度跟踪、姿态、关节、动作平滑和接触等基本训练链路没有明显问题；
+不在这一阶段迁移旧 flat 的自定义奖励语义。旧奖励的 command-driven 高度、分段跟踪核、轮腿专属
+penalty/gating 等适配统一推迟到 finetune 阶段。跳跃不属于当前阶段范围，`velocity_height` 的 jump
+command 默认保持关闭，其 3 个 jump slots 为零，不接入跳跃奖励、事件或 curriculum。
+
 ## SerialLeg 机器人配置
 
 `source/se3_rl_lab/se3_rl_lab/assets/robots/serialleg/robot_config.yaml` 是 SerialLeg 资产与运行时的人类可读单一配置来源，采用与 Kyber 类似的语义分层：
@@ -51,6 +57,21 @@ PPO/GRU 配置仍待迁移。
 ## 环境准备
 
 本仓库使用 uv 管理环境。
+
+IsaacLab 的五个 Python package 通过 `pyproject.toml` 的相对路径 `../IsaacLab/source/...` 以 editable
+方式安装，不依赖用户名或 `/home/<user>` 绝对路径。请把 `se3_rl_lab` 与 `IsaacLab` clone 到同一父目录，
+并将 IsaacLab checkout 到已验证 commit `b4c321024792976150ca55fddb26fa34480d974e`：
+
+```bash
+git clone https://github.com/isaac-sim/IsaacLab.git
+git -C IsaacLab checkout b4c321024792976150ca55fddb26fa34480d974e
+git clone https://github.com/am345/se3_rl_lab.git
+cd se3_rl_lab
+uv sync --locked
+```
+
+必须保留 IsaacLab source checkout：当前包的 `config/extension.toml` 位于 Python package 的相邻目录，
+直接从 Git subdirectory 构建普通 wheel 会破坏这个运行时目录合同。
 
 安装锁定环境：
 
@@ -175,8 +196,8 @@ uv run python scripts/list_envs.py
 ```
 
 `SerialLeg-Flat-ClosedChain-v0` 已切换到预生成 USD，并接入 delayed 6D action、34D actor observation 和
-40D critic privileged observation，可用上述 task smoke 进行 CPU/CUDA 单环境回归；flat rewards、
-terminations、curriculum 和 PPO/GRU 尚未迁移完成。
+40D critic privileged observation，可用上述 task smoke 进行 CPU/CUDA 单环境回归；官方基础 locomotion
+rewards、terminations、curriculum 和 PPO/GRU 尚未接入完成，自定义奖励适配推迟到 finetune。
 
 ## 主要目录
 
@@ -211,11 +232,13 @@ terminations、curriculum 和 PPO/GRU 尚未迁移完成。
 
 建议按小步推进：
 
-1. 迁移 flat commands、events/domain randomization、rewards、terminations 和 curriculum，并对各项语义做固定状态回归。
-2. 迁移 RSL-RL PPO/GRU 配置，对齐 GRU、rollout/BPTT、PPO 超参数、观测归一化和 checkpoint 合同。
-3. 在 CUDA 上完成 delayed action、34D/40D observation、reward 的单环境和多环境短 rollout gate。
-4. 运行长 rollout 和 fixed-tendon enabled/disabled 专项 A/B，检查有限状态、闭环 residual、virtual-root drift 与接触稳定性。
-5. GPU 空闲时按目标环境数定标 PhysX contact/pair buffers，再启动短 PPO/GRU 训练验收。
+1. 迁移 flat `velocity_height` commands、基础 events/domain randomization、terminations 和非跳跃 curriculum；jump command 默认关闭并保持 3 个 jump slots 为零。
+2. 只配置 IsaacLab 官方基础 locomotion rewards，优先验证 Isaac Sim 迁移后的基本训练链路，不迁移旧 flat 自定义奖励。
+3. 迁移 RSL-RL PPO/GRU 配置，对齐 GRU、rollout/BPTT、PPO 超参数、观测归一化和 checkpoint 合同。
+4. 在 CPU/CUDA 上完成 command、delayed action、34D/40D observation、基础 reward 的单环境和多环境短 rollout gate。
+5. 运行长 rollout 和 fixed-tendon enabled/disabled 专项 A/B，检查有限状态、闭环 residual、virtual-root drift 与接触稳定性。
+6. GPU 空闲时按目标环境数定标 PhysX contact/pair buffers，再启动短 PPO/GRU 训练验收。
+7. 仅在上述基础链路稳定后进入 finetune，届时再适配旧 flat 自定义奖励与 command normalization；跳跃保持关闭，除非后续明确重新纳入范围。
 
 ## 代码质量
 
@@ -246,13 +269,12 @@ uv run pre-commit run --all-files
 ```json
 {
   "python.analysis.extraPaths": [
-    "/home/am345/se3_rl_lab/source/se3_rl_lab",
-    "/home/am345/IsaacLab/source/isaaclab",
-    "/home/am345/IsaacLab/source/isaaclab_assets",
-    "/home/am345/IsaacLab/source/isaaclab_rl",
-    "/home/am345/IsaacLab/source/isaaclab_tasks"
+    "${workspaceFolder}/source/se3_rl_lab"
   ]
 }
 ```
+
+同时将 VSCode Python interpreter 设为 `${workspaceFolder}/.venv/bin/python`；editable 安装的 IsaacLab
+packages 会由该环境直接提供，无需在编辑器配置中写入用户目录绝对路径。
 
 如果 Pylance 因索引 Omniverse 包过多而崩溃，可以排除暂时不需要的 extscache 路径。

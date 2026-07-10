@@ -1163,7 +1163,7 @@ wheels = [
 [[package]]
 name = "isaaclab"
 version = "0.54.4"
-source = { editable = "/home/am345/IsaacLab/source/isaaclab" }
+source = { editable = "../IsaacLab/source/isaaclab" }
 dependencies = [
     { name = "daqp", marker = "platform_machine in 'x86_64,AMD64,aarch64,arm64' and sys_platform == 'linux'" },
     { name = "dex-retargeting", marker = "platform_machine in 'x86_64,AMD64' and sys_platform == 'linux'" },
@@ -1220,12 +1220,12 @@ requires-dist = [
 [[package]]
 name = "isaaclab-assets"
 version = "0.2.4"
-source = { editable = "/home/am345/IsaacLab/source/isaaclab_assets" }
+source = { editable = "../IsaacLab/source/isaaclab_assets" }
 
 [[package]]
 name = "isaaclab-mimic"
 version = "1.0.16"
-source = { editable = "/home/am345/IsaacLab/source/isaaclab_mimic" }
+source = { editable = "../IsaacLab/source/isaaclab_mimic" }
 dependencies = [
     { name = "ipywidgets" },
     { name = "tomli" },
@@ -1243,7 +1243,7 @@ provides-extras = ["robomimic", "all"]
 [[package]]
 name = "isaaclab-rl"
 version = "0.5.2"
-source = { editable = "/home/am345/IsaacLab/source/isaaclab_rl" }
+source = { editable = "../IsaacLab/source/isaaclab_rl" }
 dependencies = [
     { name = "h5py" },
     { name = "hydra-core" },
@@ -1298,7 +1298,7 @@ provides-extras = ["sb3", "skrl", "rl-games", "rsl-rl", "rl-games", "rsl-rl", "a
 [[package]]
 name = "isaaclab-tasks"
 version = "0.11.16"
-source = { editable = "/home/am345/IsaacLab/source/isaaclab_tasks" }
+source = { editable = "../IsaacLab/source/isaaclab_tasks" }
 dependencies = [
     { name = "numba" },
     { name = "numpy" },
@@ -3132,11 +3132,11 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "isaaclab", editable = "/home/am345/IsaacLab/source/isaaclab" },
-    { name = "isaaclab-assets", editable = "/home/am345/IsaacLab/source/isaaclab_assets" },
-    { name = "isaaclab-mimic", editable = "/home/am345/IsaacLab/source/isaaclab_mimic" },
-    { name = "isaaclab-rl", extras = ["rsl-rl"], editable = "/home/am345/IsaacLab/source/isaaclab_rl" },
-    { name = "isaaclab-tasks", editable = "/home/am345/IsaacLab/source/isaaclab_tasks" },
+    { name = "isaaclab", editable = "../IsaacLab/source/isaaclab" },
+    { name = "isaaclab-assets", editable = "../IsaacLab/source/isaaclab_assets" },
+    { name = "isaaclab-mimic", editable = "../IsaacLab/source/isaaclab_mimic" },
+    { name = "isaaclab-rl", extras = ["rsl-rl"], editable = "../IsaacLab/source/isaaclab_rl" },
+    { name = "isaaclab-tasks", editable = "../IsaacLab/source/isaaclab_tasks" },
     { name = "psutil" },
     { name = "pyyaml", specifier = ">=6.0,<7" },
 ]
