@@ -14,6 +14,7 @@ dependencies = [
     "isaaclab-rl[rsl-rl]",
     "isaaclab-tasks",
     "psutil",
+    "pyyaml>=6.0,<7",
 ]
 
 [tool.setuptools.packages.find]
@@ -25,6 +26,6 @@ se3_rl_lab = [
     "assets/robots/serialleg/mjcf/*.xml",
     "assets/robots/serialleg/urdf/*.urdf",
     "assets/robots/serialleg/usd/*.usd",
-    "assets/robots/serialleg/*.toml",
+    "assets/robots/serialleg/*.yaml",
     "assets/robots/serialleg/meshes/**/*.stl",
 ]

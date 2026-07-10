@@ -6,11 +6,13 @@
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg
 from isaaclab.envs import ManagerBasedRLEnvCfg
+from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
 from isaaclab.managers import ObservationTermCfg as ObsTerm
 from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.scene import InteractiveSceneCfg
+from isaaclab.sensors import ContactSensorCfg
 from isaaclab.utils import configclass
 
 from se3_rl_lab.assets.robots.serialleg import (
@@ -38,6 +40,13 @@ class Se3RlLabSceneCfg(InteractiveSceneCfg):
 
     # robot
     robot: ArticulationCfg = SERIALLEG_CLOSED_CHAIN_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
+
+    # whole-body contact reports for task gates and future contact rewards
+    contact_forces = ContactSensorCfg(
+        prim_path="{ENV_REGEX_NS}/Robot/.*",
+        history_length=1,
+        track_air_time=False,
+    )
 
     # lights
     dome_light = AssetBaseCfg(
@@ -86,6 +95,8 @@ class ObservationsCfg:
 @configclass
 class EventCfg:
     """Configuration for events."""
+
+    reset_scene = EventTerm(func=mdp.reset_scene_to_default, mode="reset")
 
 
 @configclass

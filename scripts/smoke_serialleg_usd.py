@@ -4,59 +4,37 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import os
 import sys
 import traceback
 from pathlib import Path
+from typing import Any
 
 from isaaclab.app import AppLauncher
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_USD = (
-    PROJECT_ROOT
-    / "source/se3_rl_lab/se3_rl_lab/assets/robots/serialleg/usd"
-    / "serialleg_closed_chain_complex_collision.usd"
-)
+ASSET_DIR = PROJECT_ROOT / "source/se3_rl_lab/se3_rl_lab/assets/robots/serialleg"
 
-EXPECTED_JOINTS = {
-    "lf0_Joint",
-    "lf1_Joint",
-    "l_wheel_Joint",
-    "l_drive_bar_Joint",
-    "l_coupler_Joint",
-    "rf0_Joint",
-    "rf1_Joint",
-    "r_wheel_Joint",
-    "r_drive_bar_Joint",
-    "r_coupler_Joint",
-}
-DEFAULT_JOINT_POSITIONS = {
-    "lf0_Joint": -0.275422946189,
-    "lf1_Joint": -1.242259649307,
-    "l_wheel_Joint": 0.0,
-    "l_drive_bar_Joint": -1.592100148957,
-    "l_coupler_Joint": 1.40126634,
-    "rf0_Joint": 0.275422946189,
-    "rf1_Joint": 1.242259649307,
-    "r_wheel_Joint": 0.0,
-    "r_drive_bar_Joint": 1.592100148957,
-    "r_coupler_Joint": -1.40126941,
-}
-LOOPS = (
-    (
-        "l_coupler_to_lf_calf",
-        "l_coupler_Link",
-        (-0.16999653, 0.0146, 0.00108627),
-        "lf1_Link",
-        (0.05003347, 0.0, 0.04149627),
-    ),
-    (
-        "r_coupler_to_rf_calf",
-        "r_coupler_Link",
-        (-0.16999653, -0.0131, 0.00108627),
-        "rf1_Link",
-        (0.05003347, 0.0, 0.04149627),
-    ),
+
+def _load_serialleg_contract() -> Any:
+    module_path = ASSET_DIR.parent / "serialleg_contract.py"
+    module_name = "_se3_rl_lab_usd_smoke_contract"
+    spec = importlib.util.spec_from_file_location(module_name, module_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"failed to load SerialLeg contract module: {module_path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    return module.load_serialleg_contract(ASSET_DIR / "robot_config.yaml")
+
+
+CONTRACT = _load_serialleg_contract()
+DEFAULT_USD = ASSET_DIR / CONTRACT.runtime_usd
+EXPECTED_JOINTS = set(CONTRACT.tree_joints)
+DEFAULT_JOINT_POSITIONS = CONTRACT.default_joint_positions
+LOOPS = tuple(
+    (loop.name, loop.body0, loop.local_pos0, loop.body1, loop.local_pos1) for loop in CONTRACT.loop_joints.values()
 )
 
 

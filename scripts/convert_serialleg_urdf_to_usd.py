@@ -38,11 +38,11 @@ def _load_serialleg_contract() -> Any:
     module = importlib.util.module_from_spec(spec)
     sys.modules[module_name] = module
     spec.loader.exec_module(module)
-    return module.load_serialleg_contract(ASSET_DIR / "serialleg_contract.toml")
+    return module.load_serialleg_contract(ASSET_DIR / "robot_config.yaml")
 
 
 SERIALLEG_CONTRACT = _load_serialleg_contract()
-CONTRACT_PATH = ASSET_DIR / "serialleg_contract.toml"
+CONTRACT_PATH = ASSET_DIR / "robot_config.yaml"
 CONTRACT_SHA256 = hashlib.sha256(CONTRACT_PATH.read_bytes()).hexdigest()
 DEFAULT_URDF = ASSET_DIR / SERIALLEG_CONTRACT.canonical_urdf
 DEFAULT_OUTPUT = ASSET_DIR / SERIALLEG_CONTRACT.runtime_usd
