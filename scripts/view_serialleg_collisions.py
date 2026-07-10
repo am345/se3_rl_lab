@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+import math
 import os
 import sys
 import traceback
@@ -36,6 +37,9 @@ DEFAULT_JOINT_POSITIONS = CONTRACT.default_joint_positions
 LEG_JOINTS = CONTRACT.actuator_groups["legs"].joint_names
 WHEEL_JOINTS = CONTRACT.actuator_groups["wheels"].joint_names
 PASSIVE_JOINTS = CONTRACT.passive_joint_names
+FIXED_TENDONS = tuple(CONTRACT.fixed_tendons.values())
+TENDON_BY_JOINT = {joint_name: tendon for tendon in FIXED_TENDONS for joint_name in tendon.joint_names}
+LEG_CONTROL_HALF_RANGE = math.pi
 
 
 def _parse_args() -> argparse.Namespace:
@@ -133,19 +137,49 @@ def _loop_residuals(robot: Articulation) -> dict[str, float]:
     return residuals
 
 
+def _tendon_coordinate(tendon: Any, joint_positions: dict[str, float]) -> float:
+    return sum(
+        coefficient * joint_positions[joint_name]
+        for joint_name, coefficient in zip(tendon.joint_names, tendon.coefficients, strict=True)
+    )
+
+
+def _project_changed_leg_target(joint_positions: dict[str, float], changed_joint: str) -> float:
+    """Clamp one changed rod target so its side's coupled tendon coordinate stays legal."""
+    tendon = TENDON_BY_JOINT[changed_joint]
+    coordinate = _tendon_coordinate(tendon, joint_positions)
+    bounded_coordinate = min(max(coordinate, tendon.lower), tendon.upper)
+    coefficient = tendon.coefficients[tendon.joint_names.index(changed_joint)]
+    joint_positions[changed_joint] += (bounded_coordinate - coordinate) / coefficient
+    return joint_positions[changed_joint]
+
+
+def _project_leg_targets(joint_positions: dict[str, float]) -> dict[str, float]:
+    """Return coupled-limit-safe targets, adjusting the second axis of each tendon if needed."""
+    projected = dict(joint_positions)
+    for tendon in FIXED_TENDONS:
+        _project_changed_leg_target(projected, tendon.joint_names[-1])
+        coordinate = _tendon_coordinate(tendon, projected)
+        if coordinate < tendon.lower - 1.0e-9 or coordinate > tendon.upper + 1.0e-9:
+            raise RuntimeError(f"failed to project {tendon.name} target into its coupled range")
+    return projected
+
+
 class JointControlPanel:
     """Own the viewer-only active-joint commands and optional omni.ui controls."""
 
     def __init__(self, robot: Articulation):
         self._robot = robot
-        self._leg_offsets = {name: 0.0 for name in LEG_JOINTS}
+        self._leg_targets = {name: DEFAULT_JOINT_POSITIONS[name] for name in LEG_JOINTS}
         self._wheel_velocities = {name: 0.0 for name in WHEEL_JOINTS}
         self._models: dict[str, Any] = {}
         self._value_labels: dict[str, Any] = {}
         self._residual_labels: dict[str, Any] = {}
+        self._tendon_labels: dict[str, Any] = {}
         self._passive_label = None
         self._status_label = None
         self._reset_requested = False
+        self._updating_model = False
         self._window = None
         if not ARGS.headless:
             self._build_window()
@@ -153,12 +187,23 @@ class JointControlPanel:
     def _build_window(self) -> None:
         if ui is None:
             raise RuntimeError("omni.ui is unavailable in headless mode")
-        self._window = ui.Window("SerialLeg Collision + Closed Chain", width=520, height=500)
+        self._window = ui.Window("SerialLeg Collision + Closed Chain", width=560, height=570)
         with self._window.frame:
             with ui.VStack(spacing=6):
-                ui.Label("Active leg position offsets (rad)", height=22)
+                ui.Label("Active rod targets (rad; each slider spans one full turn)", height=22)
                 for joint_name in LEG_JOINTS:
-                    self._add_control_row(joint_name, minimum=-0.35, maximum=0.35, step=0.005, unit="rad")
+                    standing = DEFAULT_JOINT_POSITIONS[joint_name]
+                    self._add_control_row(
+                        joint_name,
+                        initial=standing,
+                        minimum=standing - LEG_CONTROL_HALF_RANGE,
+                        maximum=standing + LEG_CONTROL_HALF_RANGE,
+                        step=0.01,
+                        unit="rad",
+                    )
+                ui.Label("Coupled rod-angle limits", height=22)
+                for tendon in FIXED_TENDONS:
+                    self._tendon_labels[tendon.name] = ui.Label(f"{tendon.name}: waiting", height=20)
                 ui.Spacer(height=6)
                 ui.Label("Wheel velocity targets (rad/s)", height=22)
                 for joint_name in WHEEL_JOINTS:
@@ -166,7 +211,7 @@ class JointControlPanel:
                 ui.Spacer(height=6)
                 with ui.HStack(height=30):
                     ui.Button("Reset standing pose", clicked_fn=self._request_reset)
-                    ui.Button("Zero commands", clicked_fn=self._zero_models)
+                    ui.Button("Standing + zero wheels", clicked_fn=self._zero_models)
                 ui.Spacer(height=6)
                 ui.Label("Closed-chain attachment residuals", height=22)
                 for loop in CONTRACT.loop_joints.values():
@@ -174,19 +219,36 @@ class JointControlPanel:
                 self._status_label = ui.Label("status: waiting", height=22)
                 self._passive_label = ui.Label("passive joints: waiting", word_wrap=True, height=44)
 
-    def _add_control_row(self, joint_name: str, *, minimum: float, maximum: float, step: float, unit: str) -> None:
-        model = ui.SimpleFloatModel(0.0)
+    def _add_control_row(
+        self,
+        joint_name: str,
+        *,
+        initial: float = 0.0,
+        minimum: float,
+        maximum: float,
+        step: float,
+        unit: str,
+    ) -> None:
+        model = ui.SimpleFloatModel(initial)
         self._models[joint_name] = model
         with ui.HStack(height=26):
             ui.Label(joint_name, width=170)
             ui.FloatSlider(model=model, min=minimum, max=maximum, step=step)
-            value_label = ui.Label(f"+0.000 {unit}", width=105)
+            value_label = ui.Label(f"{initial:+.3f} {unit}", width=105)
         self._value_labels[joint_name] = value_label
 
         def _on_changed(changed_model, name=joint_name, value_widget=value_label, suffix=unit):
+            if self._updating_model:
+                return
             value = changed_model.get_value_as_float()
-            if name in self._leg_offsets:
-                self._leg_offsets[name] = value
+            if name in self._leg_targets:
+                self._leg_targets[name] = value
+                projected = _project_changed_leg_target(self._leg_targets, name)
+                if not math.isclose(projected, value, abs_tol=1.0e-7):
+                    self._updating_model = True
+                    changed_model.set_value(projected)
+                    self._updating_model = False
+                    value = projected
             else:
                 self._wheel_velocities[name] = value
             value_widget.text = f"{value:+.3f} {suffix}"
@@ -198,8 +260,19 @@ class JointControlPanel:
         self._zero_models()
 
     def _zero_models(self) -> None:
-        for model in self._models.values():
-            model.set_value(0.0)
+        self._updating_model = True
+        try:
+            for joint_name, model in self._models.items():
+                value = DEFAULT_JOINT_POSITIONS[joint_name] if joint_name in self._leg_targets else 0.0
+                model.set_value(value)
+                unit = "rad" if joint_name in self._leg_targets else "rad/s"
+                self._value_labels[joint_name].text = f"{value:+.3f} {unit}"
+                if joint_name in self._leg_targets:
+                    self._leg_targets[joint_name] = value
+                else:
+                    self._wheel_velocities[joint_name] = value
+        finally:
+            self._updating_model = False
 
     def consume_reset_request(self) -> bool:
         requested = self._reset_requested
@@ -211,23 +284,23 @@ class JointControlPanel:
             phase = 2.0 * torch.pi * 0.35 * elapsed_time
             sine = float(torch.sin(torch.tensor(phase)).item())
             cosine = float(torch.cos(torch.tensor(phase)).item())
-            demo_offsets = {
-                LEG_JOINTS[0]: 0.22 * sine,
-                LEG_JOINTS[1]: -0.18 * sine,
-                LEG_JOINTS[2]: -0.22 * cosine,
-                LEG_JOINTS[3]: 0.18 * cosine,
+            demo_targets = {
+                LEG_JOINTS[0]: DEFAULT_JOINT_POSITIONS[LEG_JOINTS[0]] + 0.22 * sine,
+                LEG_JOINTS[1]: DEFAULT_JOINT_POSITIONS[LEG_JOINTS[1]] - 0.18 * sine,
+                LEG_JOINTS[2]: DEFAULT_JOINT_POSITIONS[LEG_JOINTS[2]] - 0.22 * cosine,
+                LEG_JOINTS[3]: DEFAULT_JOINT_POSITIONS[LEG_JOINTS[3]] + 0.18 * cosine,
             }
             demo_wheel_velocities = {WHEEL_JOINTS[0]: 3.0 * sine, WHEEL_JOINTS[1]: -3.0 * sine}
-            leg_values = demo_offsets
+            leg_targets_by_name = _project_leg_targets(demo_targets)
             wheel_values = demo_wheel_velocities
         else:
-            leg_values = self._leg_offsets
+            leg_targets_by_name = _project_leg_targets(self._leg_targets)
             wheel_values = self._wheel_velocities
 
         leg_ids = [self._robot.joint_names.index(name) for name in LEG_JOINTS]
         wheel_ids = [self._robot.joint_names.index(name) for name in WHEEL_JOINTS]
         leg_targets = torch.tensor(
-            [[DEFAULT_JOINT_POSITIONS[name] + leg_values[name] for name in LEG_JOINTS]],
+            [[leg_targets_by_name[name] for name in LEG_JOINTS]],
             dtype=self._robot.data.joint_pos.dtype,
             device=self._robot.device,
         )
@@ -249,6 +322,17 @@ class JointControlPanel:
         )
         for name, residual in residuals.items():
             self._residual_labels[name].text = f"{name}: {residual:.3e} m"
+        actual_leg_positions = {
+            name: float(self._robot.data.joint_pos[0, self._robot.joint_names.index(name)].item())
+            for name in LEG_JOINTS
+        }
+        for tendon in FIXED_TENDONS:
+            target_coordinate = _tendon_coordinate(tendon, self._leg_targets)
+            actual_coordinate = _tendon_coordinate(tendon, actual_leg_positions)
+            self._tendon_labels[tendon.name].text = (
+                f"{tendon.name}: target={target_coordinate:.3f}, actual={actual_coordinate:.3f} rad "
+                f"in [{tendon.lower:.3f}, {tendon.upper:.3f}]"
+            )
         passive_values = []
         for name in PASSIVE_JOINTS:
             joint_index = self._robot.joint_names.index(name)
@@ -429,6 +513,7 @@ def main() -> int:
     )
     simulation.set_camera_view(eye=(1.35, -1.55, 0.85), target=(0.0, 0.0, 0.23))
     simulation.reset()
+    robot.write_joint_state_to_sim(robot.data.default_joint_pos, robot.data.default_joint_vel)
     controls = JointControlPanel(robot)
     _configure_physics_overlays()
     residuals = _loop_residuals(robot)
@@ -454,6 +539,11 @@ def main() -> int:
     print(
         f"[serialleg-collision-view] active_leg_position_controls={LEG_JOINTS} "
         f"wheel_velocity_controls={WHEEL_JOINTS} passive_joints={PASSIVE_JOINTS}",
+        flush=True,
+    )
+    print(
+        f"[serialleg-collision-view] rod_target_span={2.0 * LEG_CONTROL_HALF_RANGE:.6f}rad "
+        f"coupled_limits={{{', '.join(f'{t.name!r}: ({t.lower:.6f}, {t.upper:.6f})' for t in FIXED_TENDONS)}}}",
         flush=True,
     )
     if ARGS.view_mode in {"collision", "both"}:

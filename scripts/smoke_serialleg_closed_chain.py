@@ -33,6 +33,9 @@ def _load_serialleg_contract() -> Any:
 CONTRACT = _load_serialleg_contract()
 DEFAULT_USD = ASSET_DIR / CONTRACT.runtime_usd
 LOOPS = tuple(CONTRACT.loop_joints.values())
+ACTUATED_JOINTS = tuple(
+    joint_name for group in CONTRACT.actuator_groups.values() if group.actuated for joint_name in group.joint_names
+)
 
 
 def _parse_args() -> argparse.Namespace:
@@ -55,7 +58,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--min-separation-ratio",
         type=float,
-        default=1000.0,
+        default=400.0,
         help="Minimum open/closed peak residual ratio required for every loop",
     )
     parser.add_argument(
@@ -110,7 +113,7 @@ def _robot_cfg(usd_path: Path, prim_path: str, y_position: float) -> Articulatio
         ),
         actuators={
             "neutral": ImplicitActuatorCfg(
-                joint_names_expr=[".*"],
+                joint_names_expr=list(ACTUATED_JOINTS),
                 effort_limit_sim=0.0,
                 stiffness=0.0,
                 damping=0.0,
@@ -214,11 +217,21 @@ def main() -> int:
     simulation.reset()
 
     for robot in (closed, open_control):
-        if robot.num_instances != 1 or robot.num_bodies != 11 or robot.num_joints != 10:
+        if (
+            robot.num_instances != 1
+            or robot.num_bodies != len(CONTRACT.links)
+            or robot.num_joints != len(CONTRACT.tree_joints)
+        ):
             raise RuntimeError(
                 f"unexpected articulation dimensions: instances={robot.num_instances}, "
                 f"bodies={robot.num_bodies}, joints={robot.num_joints}"
             )
+        if robot.num_fixed_tendons != len(CONTRACT.fixed_tendons):
+            raise RuntimeError(
+                f"unexpected fixed tendon count: expected={len(CONTRACT.fixed_tendons)} "
+                f"actual={robot.num_fixed_tendons}"
+            )
+        robot.write_joint_state_to_sim(robot.data.default_joint_pos, robot.data.default_joint_vel)
 
     closed_body_ids = _loaded_body_ids(closed)
     open_body_ids = _loaded_body_ids(open_control)

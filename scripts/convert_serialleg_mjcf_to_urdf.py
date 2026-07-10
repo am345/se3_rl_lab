@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Convert the collision-only canonical SerialLeg MJCF tree and loop closures to URDF.
 
-The canonical MJCF already stores the rigid bodies and hinge joints as a tree.
-Its two ``equality/connect`` elements are converted to Isaac Sim's spherical
-``loop_joint`` URDF extension.  The converter deliberately does not translate
-MJCF-only solver, tendon, armature, contact-filter, or keyframe semantics.
+The canonical MJCF already stores the physical rigid bodies and hinge joints as
+a tree.  This converter inserts one narrow-range virtual revolute/mount pair per
+side so each pair of sibling leg roots has a legal common-ancestor joint for a
+future PhysX fixed tendon.  Its two ``equality/connect`` elements are converted
+to Isaac Sim's spherical ``loop_joint`` URDF extension.  The converter does not
+yet author PhysX tendon schemas or translate other MJCF-only solver semantics.
 """
 
 from __future__ import annotations
@@ -60,6 +62,46 @@ EXPECTED_LOOP_NAMES = {
     "l_coupler_to_lf_calf",
     "r_coupler_to_rf_calf",
 }
+EXPECTED_FIXED_TENDONS = {
+    "l_active_rod_angle": {
+        "axes": (("lf0_Joint", 1.0), ("l_drive_bar_Joint", -1.0)),
+        "range": (0.0, 1.509535270050),
+        "solref": (0.010, 1.0),
+        "solimp": (0.99, 0.999, 0.00001, 0.5, 2.0),
+    },
+    "r_active_rod_angle": {
+        "axes": (("r_drive_bar_Joint", 1.0), ("rf0_Joint", -1.0)),
+        "range": (0.0, 1.509535270050),
+        "solref": (0.010, 1.0),
+        "solimp": (0.99, 0.999, 0.00001, 0.5, 2.0),
+    },
+}
+VIRTUAL_MOUNTS = (
+    {
+        "joint": "l_tendon_root_Joint",
+        "link": "l_tendon_mount_Link",
+        "axis": (0.0, 1.0, 0.0),
+        "children": ("lf0_Joint", "l_drive_bar_Joint"),
+        "tendon": "l_active_rod_angle",
+    },
+    {
+        "joint": "r_tendon_root_Joint",
+        "link": "r_tendon_mount_Link",
+        "axis": (0.0, -1.0, 0.0),
+        "children": ("rf0_Joint", "r_drive_bar_Joint"),
+        "tendon": "r_active_rod_angle",
+    },
+)
+VIRTUAL_LINK_NAMES = {str(spec["link"]) for spec in VIRTUAL_MOUNTS}
+VIRTUAL_JOINT_NAMES = {str(spec["joint"]) for spec in VIRTUAL_MOUNTS}
+GENERATED_LINK_NAMES = EXPECTED_LINK_NAMES | VIRTUAL_LINK_NAMES
+VIRTUAL_MOUNT_MASS = 1.0e-4
+VIRTUAL_MOUNT_INERTIA = 1.0e-7
+VIRTUAL_JOINT_LOWER = -1.0e-4
+VIRTUAL_JOINT_UPPER = 1.0e-4
+VIRTUAL_JOINT_EFFORT = 40.0
+VIRTUAL_JOINT_VELOCITY = 0.1
+VIRTUAL_JOINT_DAMPING = 10.0
 EXPECTED_TOTAL_MASS = 12.72874558
 EXPECTED_VISUAL_COUNT = 0
 EXPECTED_COLLISION_COUNT = 56
@@ -120,6 +162,15 @@ def _vector(text: str | None, *, default: Vector3 = (0.0, 0.0, 0.0)) -> Vector3:
     return values  # type: ignore[return-value]
 
 
+def _numbers(text: str | None, size: int, context: str) -> tuple[float, ...]:
+    if text is None:
+        raise ConversionError(f"{context} is missing")
+    values = tuple(float(value) for value in text.split())
+    if len(values) != size or not all(math.isfinite(value) for value in values):
+        raise ConversionError(f"{context} must contain {size} finite numbers")
+    return values
+
+
 def _subtract(lhs: Vector3, rhs: Vector3) -> Vector3:
     return lhs[0] - rhs[0], lhs[1] - rhs[1], lhs[2] - rhs[2]
 
@@ -161,6 +212,48 @@ def _matrix_multiply(lhs: Matrix3, rhs: Matrix3) -> Matrix3:
         tuple(sum(lhs[row][inner] * rhs[inner][column] for inner in range(3)) for column in range(3))
         for row in range(3)
     )  # type: ignore[return-value]
+
+
+def _matrix_add(lhs: Matrix3, rhs: Matrix3) -> Matrix3:
+    return tuple(tuple(lhs[row][column] + rhs[row][column] for column in range(3)) for row in range(3))  # type: ignore[return-value]
+
+
+def _matrix_subtract(lhs: Matrix3, rhs: Matrix3) -> Matrix3:
+    return tuple(tuple(lhs[row][column] - rhs[row][column] for column in range(3)) for row in range(3))  # type: ignore[return-value]
+
+
+def _matrix_scale(matrix: Matrix3, scalar: float) -> Matrix3:
+    return tuple(tuple(matrix[row][column] * scalar for column in range(3)) for row in range(3))  # type: ignore[return-value]
+
+
+def _outer(vector: Vector3) -> Matrix3:
+    return tuple(tuple(vector[row] * vector[column] for column in range(3)) for row in range(3))  # type: ignore[return-value]
+
+
+def _parallel_axis(mass: float, displacement: Vector3) -> Matrix3:
+    squared_distance = sum(value * value for value in displacement)
+    return _matrix_scale(
+        _matrix_subtract(_matrix_scale(_identity_matrix(), squared_distance), _outer(displacement)),
+        mass,
+    )
+
+
+def _full_inertia_matrix(values: tuple[float, ...]) -> Matrix3:
+    if len(values) != 6:
+        raise ConversionError("full inertia must contain six values")
+    ixx, iyy, izz, ixy, ixz, iyz = values
+    return (ixx, ixy, ixz), (ixy, iyy, iyz), (ixz, iyz, izz)
+
+
+def _inertia_attributes(matrix: Matrix3) -> dict[str, str]:
+    return {
+        "ixx": _format_number(matrix[0][0]),
+        "ixy": _format_number(matrix[0][1]),
+        "ixz": _format_number(matrix[0][2]),
+        "iyy": _format_number(matrix[1][1]),
+        "iyz": _format_number(matrix[1][2]),
+        "izz": _format_number(matrix[2][2]),
+    }
 
 
 def _rotation(axis: Vector3, angle: float) -> Matrix3:
@@ -397,6 +490,46 @@ def _append_geometry(
         ET.SubElement(item, "material", {"name": "serialleg_visual"})
 
 
+def _append_inertial(
+    link: ET.Element,
+    *,
+    position: Vector3,
+    mass: float,
+    inertia: Matrix3,
+) -> None:
+    inertial = ET.SubElement(link, "inertial")
+    _origin(inertial, position)
+    ET.SubElement(inertial, "mass", {"value": _format_number(mass)})
+    ET.SubElement(inertial, "inertia", _inertia_attributes(inertia))
+
+
+def _split_base_inertial(source_inertial: ET.Element) -> tuple[float, Vector3, Matrix3]:
+    """Remove both virtual mounts from base inertia while preserving the zero-pose aggregate exactly."""
+    source_mass = float(source_inertial.get("mass", "nan"))
+    source_com = _vector(source_inertial.get("pos"))
+    source_inertia = _full_inertia_matrix(
+        tuple(float(value) for value in source_inertial.get("fullinertia", "").split())
+    )
+    mount_count = len(VIRTUAL_MOUNTS)
+    base_mass = source_mass - mount_count * VIRTUAL_MOUNT_MASS
+    if base_mass <= 0.0:
+        raise ConversionError("virtual mount mass leaves a non-positive base mass")
+    base_com = tuple(source_mass * value / base_mass for value in source_com)
+    base_displacement = _subtract(base_com, source_com)  # type: ignore[arg-type]
+    mount_displacement = tuple(-value for value in source_com)
+    mount_inertia = _matrix_scale(_identity_matrix(), VIRTUAL_MOUNT_INERTIA)
+    correction = _parallel_axis(base_mass, base_displacement)
+    for _ in VIRTUAL_MOUNTS:
+        correction = _matrix_add(
+            correction,
+            _matrix_add(
+                mount_inertia,
+                _parallel_axis(VIRTUAL_MOUNT_MASS, mount_displacement),  # type: ignore[arg-type]
+            ),
+        )
+    return base_mass, base_com, _matrix_subtract(source_inertia, correction)  # type: ignore[arg-type]
+
+
 def _append_link(robot: ET.Element, record: BodyRecord, mesh_paths: dict[str, str]) -> None:
     link = ET.SubElement(robot, "link", {"name": record.name})
     inertials = record.element.findall("inertial")
@@ -407,26 +540,29 @@ def _append_link(robot: ET.Element, record: BodyRecord, mesh_paths: dict[str, st
     full_inertia = tuple(float(value) for value in source_inertial.get("fullinertia", "").split())
     if len(full_inertia) != 6:
         raise ConversionError(f"body {record.name} must use MJCF fullinertia")
-
-    inertial = ET.SubElement(link, "inertial")
-    _origin(inertial, _subtract(_vector(source_inertial.get("pos")), record.joint_position))
-    ET.SubElement(inertial, "mass", {"value": source_inertial.get("mass", "")})
-    ET.SubElement(
-        inertial,
-        "inertia",
-        {
-            "ixx": _format_number(full_inertia[0]),
-            "ixy": _format_number(full_inertia[3]),
-            "ixz": _format_number(full_inertia[4]),
-            "iyy": _format_number(full_inertia[1]),
-            "iyz": _format_number(full_inertia[5]),
-            "izz": _format_number(full_inertia[2]),
-        },
-    )
+    if record.name == "base_link":
+        mass, position, inertia = _split_base_inertial(source_inertial)
+    else:
+        mass = float(source_inertial.get("mass", "nan"))
+        position = _subtract(_vector(source_inertial.get("pos")), record.joint_position)
+        inertia = _full_inertia_matrix(full_inertia)
+    _append_inertial(link, position=position, mass=mass, inertia=inertia)
 
     for geom in record.element.findall("geom"):
         category = _geom_category(geom)
         _append_geometry(link, geom, record=record, mesh_paths=mesh_paths, category=category)
+
+
+def _append_virtual_mount_links(robot: ET.Element) -> None:
+    inertia = _matrix_scale(_identity_matrix(), VIRTUAL_MOUNT_INERTIA)
+    for spec in VIRTUAL_MOUNTS:
+        link = ET.SubElement(robot, "link", {"name": str(spec["link"])})
+        _append_inertial(
+            link,
+            position=(0.0, 0.0, 0.0),
+            mass=VIRTUAL_MOUNT_MASS,
+            inertia=inertia,
+        )
 
 
 def _append_joint(robot: ET.Element, record: BodyRecord, default_damping: float) -> None:
@@ -446,7 +582,12 @@ def _append_joint(robot: ET.Element, record: BodyRecord, default_damping: float)
     )
     joint = ET.SubElement(robot, "joint", {"name": name, "type": "continuous"})
     _origin(joint, record.joint_origin)
-    ET.SubElement(joint, "parent", {"link": record.parent_name})
+    parent_name = record.parent_name
+    for spec in VIRTUAL_MOUNTS:
+        if name in spec["children"]:
+            parent_name = str(spec["link"])
+            break
+    ET.SubElement(joint, "parent", {"link": parent_name})
     ET.SubElement(joint, "child", {"link": record.name})
     ET.SubElement(joint, "axis", {"xyz": _format_vector(_vector(record.joint.get("axis"), default=(0.0, 0.0, 1.0)))})
     ET.SubElement(
@@ -454,6 +595,36 @@ def _append_joint(robot: ET.Element, record: BodyRecord, default_damping: float)
         "dynamics",
         {"damping": _format_number(damping), "friction": _format_number(friction)},
     )
+
+
+def _append_virtual_mount_joints(robot: ET.Element) -> None:
+    for spec in VIRTUAL_MOUNTS:
+        robot.append(
+            ET.Comment(
+                f" Virtual root for future PhysX fixed tendon {spec['tendon']}: "
+                "planned root gearing=0 and forceCoefficient=0; narrow non-locked range is intentional. "
+            )
+        )
+        joint = ET.SubElement(robot, "joint", {"name": str(spec["joint"]), "type": "revolute"})
+        _origin(joint, (0.0, 0.0, 0.0))
+        ET.SubElement(joint, "parent", {"link": "base_link"})
+        ET.SubElement(joint, "child", {"link": str(spec["link"])})
+        ET.SubElement(joint, "axis", {"xyz": _format_vector(spec["axis"])})  # type: ignore[arg-type]
+        ET.SubElement(
+            joint,
+            "limit",
+            {
+                "lower": _format_number(VIRTUAL_JOINT_LOWER),
+                "upper": _format_number(VIRTUAL_JOINT_UPPER),
+                "effort": _format_number(VIRTUAL_JOINT_EFFORT),
+                "velocity": _format_number(VIRTUAL_JOINT_VELOCITY),
+            },
+        )
+        ET.SubElement(
+            joint,
+            "dynamics",
+            {"damping": _format_number(VIRTUAL_JOINT_DAMPING), "friction": "0"},
+        )
 
 
 def _append_loop_joint(robot: ET.Element, loop: LoopRecord) -> None:
@@ -475,6 +646,33 @@ def _default_joint_damping(mjcf_root: ET.Element) -> float:
     return 0.0 if default_joint is None else float(default_joint.get("damping", "0"))
 
 
+def _validate_fixed_tendon_source(mjcf_root: ET.Element) -> None:
+    tendon_section = mjcf_root.find("tendon")
+    if tendon_section is None:
+        raise ConversionError("canonical MJCF has no tendon section")
+    fixed_tendons = {fixed.get("name", ""): fixed for fixed in tendon_section.findall("fixed")}
+    if set(fixed_tendons) != set(EXPECTED_FIXED_TENDONS):
+        raise ConversionError(f"canonical fixed-tendon set changed: {sorted(fixed_tendons)}")
+    for name, expected in EXPECTED_FIXED_TENDONS.items():
+        fixed = fixed_tendons[name]
+        if fixed.get("limited") != "true":
+            raise ConversionError(f"fixed tendon {name} must remain limited")
+        for attribute, expected_values in (
+            ("range", expected["range"]),
+            ("solreflimit", expected["solref"]),
+            ("solimplimit", expected["solimp"]),
+        ):
+            actual_values = _numbers(fixed.get(attribute), len(expected_values), f"fixed tendon {name} {attribute}")
+            if any(
+                not math.isclose(actual, float(reference), rel_tol=0.0, abs_tol=1.0e-12)
+                for actual, reference in zip(actual_values, expected_values, strict=True)
+            ):
+                raise ConversionError(f"fixed tendon {name} {attribute} changed: {actual_values}")
+        axes = tuple((joint.get("joint", ""), float(joint.get("coef", "nan"))) for joint in fixed.findall("joint"))
+        if axes != expected["axes"]:
+            raise ConversionError(f"fixed tendon {name} axes changed: {axes}")
+
+
 def _validate_source(
     mjcf_root: ET.Element,
     records: list[BodyRecord],
@@ -490,6 +688,7 @@ def _validate_source(
         raise ConversionError(f"canonical joint order changed: {joint_names}")
     if {loop.name for loop in loops} != EXPECTED_LOOP_NAMES or len(loops) != 2:
         raise ConversionError("canonical loop closure set changed")
+    _validate_fixed_tendon_source(mjcf_root)
     if len(meshes) != EXPECTED_MESH_COUNT:
         raise ConversionError(f"expected {EXPECTED_MESH_COUNT} mesh assets, got {len(meshes)}")
 
@@ -518,10 +717,15 @@ def _validate_tree(robot: ET.Element) -> dict[str, ET.Element]:
     links = {link.get("name", ""): link for link in robot.findall("link")}
     joints = robot.findall("joint")
     loops = robot.findall("loop_joint")
-    if set(links) != EXPECTED_LINK_NAMES or len(links) != 11:
+    if set(links) != GENERATED_LINK_NAMES or len(links) != 13:
         raise ConversionError("generated URDF link set is invalid")
-    if len(joints) != 10 or any(joint.get("type") != "continuous" for joint in joints):
-        raise ConversionError("generated URDF must contain ten continuous tree joints")
+    joints_by_name = {joint.get("name", ""): joint for joint in joints}
+    if len(joints_by_name) != 12 or set(joints_by_name) != set(EXPECTED_JOINT_NAMES) | VIRTUAL_JOINT_NAMES:
+        raise ConversionError("generated URDF tree-joint set is invalid")
+    if any(joints_by_name[name].get("type") != "continuous" for name in EXPECTED_JOINT_NAMES):
+        raise ConversionError("the ten source tree joints must remain continuous")
+    if any(joints_by_name[name].get("type") != "revolute" for name in VIRTUAL_JOINT_NAMES):
+        raise ConversionError("the two virtual tendon-root joints must be revolute")
     if len(loops) != 2 or {loop.get("name") for loop in loops} != EXPECTED_LOOP_NAMES:
         raise ConversionError("generated URDF must contain the two expected loop joints")
     if any(loop.get("type") != "spherical" for loop in loops):
@@ -554,6 +758,42 @@ def _validate_tree(robot: ET.Element) -> dict[str, ET.Element]:
             frontier.append(child)
     if reachable != set(links):
         raise ConversionError("generated URDF tree is disconnected")
+
+    for spec in VIRTUAL_MOUNTS:
+        joint = joints_by_name[str(spec["joint"])]
+        origin = joint.find("origin")
+        parent = joint.find("parent")
+        child = joint.find("child")
+        axis = joint.find("axis")
+        limit = joint.find("limit")
+        dynamics = joint.find("dynamics")
+        if any(item is None for item in (origin, parent, child, axis, limit, dynamics)):
+            raise ConversionError(f"virtual joint {spec['joint']} is incomplete")
+        if _vector(origin.get("xyz")) != (0.0, 0.0, 0.0) or _vector(origin.get("rpy")) != IDENTITY_RPY:
+            raise ConversionError(f"virtual joint {spec['joint']} must be coincident with base_link")
+        if parent.get("link") != "base_link" or child.get("link") != spec["link"]:
+            raise ConversionError(f"virtual joint {spec['joint']} parent/child changed")
+        _require_vector_close(_vector(axis.get("xyz")), spec["axis"], f"virtual joint {spec['joint']} axis")  # type: ignore[arg-type]
+        expected_limit = {
+            "lower": VIRTUAL_JOINT_LOWER,
+            "upper": VIRTUAL_JOINT_UPPER,
+            "effort": VIRTUAL_JOINT_EFFORT,
+            "velocity": VIRTUAL_JOINT_VELOCITY,
+        }
+        for attribute, expected in expected_limit.items():
+            if not math.isclose(float(limit.get(attribute, "nan")), expected, rel_tol=0.0, abs_tol=1.0e-15):
+                raise ConversionError(f"virtual joint {spec['joint']} {attribute} changed")
+        if not float(limit.get("lower", "nan")) < 0.0 < float(limit.get("upper", "nan")):
+            raise ConversionError(f"virtual joint {spec['joint']} must have a non-locked range around zero")
+        if (
+            not math.isclose(float(dynamics.get("damping", "nan")), VIRTUAL_JOINT_DAMPING, rel_tol=0.0, abs_tol=1.0e-15)
+            or float(dynamics.get("friction", "nan")) != 0.0
+        ):
+            raise ConversionError(f"virtual joint {spec['joint']} dynamics changed")
+        for source_joint_name in spec["children"]:
+            source_parent = joints_by_name[str(source_joint_name)].find("parent")
+            if source_parent is None or source_parent.get("link") != spec["link"]:
+                raise ConversionError(f"{source_joint_name} is not parented under {spec['link']}")
     return links
 
 
@@ -698,32 +938,103 @@ def _validate_link_inertial(record: BodyRecord, link: ET.Element) -> None:
     target_tensor = target_inertial.find("inertia")
     if target_origin is None or target_mass is None or target_tensor is None:
         raise ConversionError(f"generated link {record.name} has an incomplete inertial")
-    _require_vector_close(
-        _vector(target_origin.get("xyz")),
-        _subtract(_vector(source_inertial.get("pos")), record.joint_position),
-        f"link {record.name} inertial origin",
-    )
+    if record.name == "base_link":
+        expected_mass, expected_position, expected_inertia = _split_base_inertial(source_inertial)
+    else:
+        expected_mass = float(source_inertial.get("mass", "nan"))
+        expected_position = _subtract(_vector(source_inertial.get("pos")), record.joint_position)
+        expected_inertia = _full_inertia_matrix(source_full)
+    _require_vector_close(_vector(target_origin.get("xyz")), expected_position, f"link {record.name} inertial origin")
     if _vector(target_origin.get("rpy")) != IDENTITY_RPY:
         raise ConversionError(f"link {record.name} inertial rpy must remain zero")
     if not math.isclose(
         float(target_mass.get("value", "nan")),
-        float(source_inertial.get("mass", "nan")),
+        expected_mass,
         rel_tol=0.0,
         abs_tol=1.0e-12,
     ):
         raise ConversionError(f"link {record.name} mass changed during conversion")
-    expected_tensor = {
-        "ixx": source_full[0],
-        "ixy": source_full[3],
-        "ixz": source_full[4],
-        "iyy": source_full[1],
-        "iyz": source_full[5],
-        "izz": source_full[2],
-    }
+    expected_tensor = {name: float(value) for name, value in _inertia_attributes(expected_inertia).items()}
     for name, expected in expected_tensor.items():
         if not math.isclose(float(target_tensor.get(name, "nan")), expected, rel_tol=0.0, abs_tol=1.0e-15):
             raise ConversionError(f"link {record.name} inertia field {name} changed during conversion")
     _validate_inertia_tensor(target_tensor, f"link {record.name}")
+
+
+def _read_link_inertial(link: ET.Element) -> tuple[float, Vector3, Matrix3]:
+    inertial = link.find("inertial")
+    if inertial is None:
+        raise ConversionError(f"link {link.get('name')} is missing inertial")
+    origin = inertial.find("origin")
+    mass_element = inertial.find("mass")
+    inertia_element = inertial.find("inertia")
+    if origin is None or mass_element is None or inertia_element is None:
+        raise ConversionError(f"link {link.get('name')} has incomplete inertial data")
+    matrix = (
+        (
+            float(inertia_element.get("ixx", "nan")),
+            float(inertia_element.get("ixy", "nan")),
+            float(inertia_element.get("ixz", "nan")),
+        ),
+        (
+            float(inertia_element.get("ixy", "nan")),
+            float(inertia_element.get("iyy", "nan")),
+            float(inertia_element.get("iyz", "nan")),
+        ),
+        (
+            float(inertia_element.get("ixz", "nan")),
+            float(inertia_element.get("iyz", "nan")),
+            float(inertia_element.get("izz", "nan")),
+        ),
+    )
+    return float(mass_element.get("value", "nan")), _vector(origin.get("xyz")), matrix
+
+
+def _require_matrix_close(actual: Matrix3, expected: Matrix3, context: str, tolerance: float = 1.0e-12) -> None:
+    error = max(abs(actual[row][column] - expected[row][column]) for row in range(3) for column in range(3))
+    if error > tolerance:
+        raise ConversionError(f"{context} mismatch: max_error={error:.3e}")
+
+
+def _validate_virtual_mount_inertials(links: dict[str, ET.Element], base_record: BodyRecord) -> None:
+    expected_mount_inertia = _matrix_scale(_identity_matrix(), VIRTUAL_MOUNT_INERTIA)
+    components: list[tuple[float, Vector3, Matrix3]] = []
+    for link_name in ("base_link", *sorted(VIRTUAL_LINK_NAMES)):
+        mass, position, inertia = _read_link_inertial(links[link_name])
+        if link_name in VIRTUAL_LINK_NAMES:
+            if not math.isclose(mass, VIRTUAL_MOUNT_MASS, rel_tol=0.0, abs_tol=1.0e-15):
+                raise ConversionError(f"virtual mount {link_name} mass changed")
+            _require_vector_close(position, (0.0, 0.0, 0.0), f"virtual mount {link_name} COM")
+            _require_matrix_close(inertia, expected_mount_inertia, f"virtual mount {link_name} inertia", 1.0e-15)
+            _validate_inertia_tensor(links[link_name].find("./inertial/inertia"), f"virtual mount {link_name}")  # type: ignore[arg-type]
+        components.append((mass, position, inertia))
+
+    aggregate_mass = sum(mass for mass, _position, _inertia in components)
+    aggregate_com = tuple(
+        sum(mass * position[axis] for mass, position, _inertia in components) / aggregate_mass for axis in range(3)
+    )
+    aggregate_inertia: Matrix3 = ((0.0, 0.0, 0.0), (0.0, 0.0, 0.0), (0.0, 0.0, 0.0))
+    for mass, position, inertia in components:
+        aggregate_inertia = _matrix_add(
+            aggregate_inertia,
+            _matrix_add(inertia, _parallel_axis(mass, _subtract(position, aggregate_com))),  # type: ignore[arg-type]
+        )
+
+    source = base_record.element.find("inertial")
+    if source is None:
+        raise ConversionError("source base_link is missing inertial")
+    source_mass = float(source.get("mass", "nan"))
+    source_com = _vector(source.get("pos"))
+    source_inertia = _full_inertia_matrix(tuple(float(value) for value in source.get("fullinertia", "").split()))
+    if not math.isclose(aggregate_mass, source_mass, rel_tol=0.0, abs_tol=1.0e-12):
+        raise ConversionError("base plus virtual mounts do not preserve source mass")
+    _require_vector_close(aggregate_com, source_com, "base plus virtual mounts aggregate COM", tolerance=1.0e-12)  # type: ignore[arg-type]
+    _require_matrix_close(
+        aggregate_inertia,
+        source_inertia,
+        "base plus virtual mounts aggregate inertia",
+        tolerance=1.0e-12,
+    )
 
 
 def _validate_link_geometries(record: BodyRecord, link: ET.Element, mesh_paths: dict[str, str]) -> None:
@@ -782,6 +1093,8 @@ def _validate_output(
         link = links[record.name]
         _validate_link_inertial(record, link)
         _validate_link_geometries(record, link, mesh_paths)
+    _validate_virtual_mount_inertials(links, records[0])
+    for link in links.values():
         mass = link.find("./inertial/mass")
         if mass is None:
             raise ConversionError(f"link {link.get('name')} has no mass")
@@ -845,7 +1158,7 @@ def _build_urdf(source: Path, output: Path) -> tuple[bytes, float, float]:
     )
     robot.append(
         ET.Comment(
-            " Intentionally deferred MJCF-only semantics: joint armature; fixed-tendon coupled limits; "
+            " Intentionally deferred MJCF-only semantics: joint armature; PhysX fixed-tendon schemas; "
             "spatial-tendon sites; option timestep/solver/cone; geom/equality solref and solimp; "
             "contact masks/friction; standing keyframe; world floor/light and debug display materials. "
         )
@@ -861,7 +1174,9 @@ def _build_urdf(source: Path, output: Path) -> tuple[bytes, float, float]:
     )
     for record in records:
         _append_link(robot, record, mesh_paths)
+    _append_virtual_mount_links(robot)
     default_damping = _default_joint_damping(mjcf_root)
+    _append_virtual_mount_joints(robot)
     for record in records:
         _append_joint(robot, record, default_damping)
     for loop in loops:
@@ -892,7 +1207,7 @@ def main() -> int:
 
     print(
         f"{action} {output}\n"
-        f"links=11 tree_joints=10 loop_joints=2 visuals={EXPECTED_VISUAL_COUNT} "
+        f"links=13 tree_joints=12 source_dofs=10 virtual_dofs=2 loop_joints=2 visuals={EXPECTED_VISUAL_COUNT} "
         f"collision_meshes={EXPECTED_MESH_COUNT} total_mass={EXPECTED_TOTAL_MASS:.8f}kg\n"
         f"zero_loop_residual={zero_residual:.3e}m standing_loop_residual={standing_residual:.3e}m"
     )

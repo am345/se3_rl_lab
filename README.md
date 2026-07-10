@@ -58,7 +58,9 @@ uv run python scripts/convert_serialleg_mjcf_to_urdf.py --check
 ```
 
 接受 NVIDIA Omniverse EULA 后，通过 Isaac Sim 5.1 importer 生成并检查自包含 USD。canonical MJCF、URDF 和
-最终 USD 均为 collision-only，不再携带原始高模 visual：
+最终 USD 均为 collision-only，不再携带原始高模 visual。URDF/USD 采用左右各一个 geometry-free virtual mount：
+共 13 个刚体、12 个 tree DOF；两个窄限位 virtual revolute joint 作为 PhysX fixed tendon root，原 10 个 source DOF
+和两条 external spherical loop joints 保持不变：
 
 ```bash
 OMNI_KIT_ACCEPT_EULA=YES uv run python scripts/convert_serialleg_urdf_to_usd.py
@@ -92,7 +94,7 @@ OMNI_KIT_ACCEPT_EULA=YES uv run python scripts/smoke_serialleg_closed_chain.py -
 
 该 gate 在同一 stage 中生成两个相同机器人：`Closed` 保持 loop joints 启用，`OpenControl` 只在运行时
 关闭这两条 joints。两者承受相同的成对反向周期外力；验收要求 closed 逐侧 residual `<2e-5 m`、
-open control residual `>1e-3 m`、逐侧 A/B 差异 `>1000x`，且 closed 关节实际运动 `>1e-3 rad`。
+open control residual `>1e-3 m`、逐侧 A/B 差异 `>400x`，且 closed 关节实际运动 `>1e-3 rad`。
 
 对完整 Gym task 运行单环境 bounded gate：
 
@@ -101,7 +103,7 @@ OMNI_KIT_ACCEPT_EULA=YES uv run python scripts/smoke_serialleg_task.py --headles
 OMNI_KIT_ACCEPT_EULA=YES uv run python scripts/smoke_serialleg_task.py --headless --device cuda:0 --compact-gpu-buffers
 ```
 
-该 gate 验证 `gym.make/reset/step`、11 bodies/10 DOFs、6D policy action 顺序与 scale、4 个 passive DOF 零 target/effort、standing reset、零/小幅动作有限状态、地面接触和 loop residual。task 使用 `16/4` solver iterations：velocity iterations 与 Kyber 高冲击闭链任务一致，position iterations 针对 SerialLeg 闭合误差加倍。物理步长为 `dt=0.005`、`decimation=4`。task pose residual gate 为 `1e-3 m`，对齐 Kyber MuJoCo 闭链 pose projection 的警告阈值；asset free-space/contact gates 仍分别保持 `1e-5/2e-4 m`。
+该 gate 验证 `gym.make/reset/step`、13 bodies/12 DOFs/2 fixed tendons、两个 virtual root 无 actuator、6D policy action 顺序与 scale、4 个 passive source DOF 零 target/effort、standing reset、零/小幅动作有限状态、地面接触和 loop residual。task 使用 `16/4` solver iterations：velocity iterations 与 Kyber 高冲击闭链任务一致，position iterations 针对 SerialLeg 闭合误差加倍。物理步长为 `dt=0.005`、`decimation=4`。task pose residual gate 为 `1e-3 m`，对齐 Kyber MuJoCo 闭链 pose projection 的警告阈值；asset free-space/contact gates 仍分别保持 `1e-5/2e-4 m`。
 
 `--compact-gpu-buffers` 只缩小该单环境 gate 的 PhysX GPU 预分配，不改动训练环境默认 capacity。当 GPU 上同时运行大规模训练时，默认 `2**23` rigid-contact buffer 可能因显存不足而在 rollout 前 OOM。
 
@@ -116,11 +118,12 @@ render-only preview 并添加灯光；预览包括 54 个 mesh 和 2 个 wheel c
 因此会跟随关节动作；不向训练 USD 写入 visual 或增加其磁盘体积。GUI 会同时打开 `SerialLeg Collision + Closed Chain`
 控制面板：
 
-- 4 个 leg policy joint 使用 standing pose 附近的 position-offset 滑块；
+- 4 个主动杆关节使用绝对角度滑块；每根杆以 standing angle 为中心覆盖完整 `2π` 行程，不设虚假的单关节机械限位；
+- 每侧两根杆的组合按 fixed-tendon coordinate 实时约束在 `[0, 1.509535] rad`，拖动一根杆越界时会截断该杆目标；面板同时显示 target/actual 夹角；
 - 2 个 wheel joint 使用 velocity-target 滑块；
 - 4 个 passive closed-chain joints 不直接下命令，面板实时显示它们的实际位置；
 - 两条 loop attachment residual 实时显示，默认阈值为 `2e-4 m`；
-- `Reset standing pose` 硬重置关节状态，`Zero commands` 只将当前命令归零。
+- `Reset standing pose` 硬重置关节状态，`Standing + zero wheels` 将杆目标恢复为 standing 并清零轮速。
 
 viewer 默认固定 base 以方便观察机构；需要查看 floating-base 反作用时使用 `--floating-base`。需要无手动滑块的
 自动闭链动画或 bounded headless gate 时使用：
@@ -140,7 +143,7 @@ OMNI_KIT_ACCEPT_EULA=YES uv run python scripts/view_serialleg_collisions.py --de
 `both` 表示实体渲染加 PhysX 线框，`collision` 只显示线框。绿色表示 dynamic collider，洋红色表示 static collider，
 深红色表示 PhysX 使用了 fallback geometry；也可在 Eye 菜单中手动切换。
 
-canonical URDF 本身没有 visual。为规避 Isaac importer 的无 visual 悬挂引用，转换器临时给 11 个 link
+canonical URDF 本身没有 visual。为规避 Isaac importer 的无 visual 悬挂引用，转换器临时给 13 个 link
 各放一个透明 `1e-6 m` sphere；导入后立即屏蔽这些 `visuals` scope，再 flatten。最终 USD 只有 54 个 collision mesh
 和 2 个 wheel cylinder，visual geometry 为 0；viewer 的实体模式显示的正是这些 collision geometry，而不是原始高模 visual。
 

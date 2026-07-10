@@ -1,7 +1,7 @@
 # Copyright (c) 2026, SE3 RL Lab contributors.
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Strongly validated SerialLeg robot config with topology derived from canonical URDF."""
+"""Strongly validated SerialLeg config derived from canonical URDF and MJCF sources."""
 
 from __future__ import annotations
 
@@ -44,10 +44,31 @@ class LoopJointContract:
 
 
 @dataclass(frozen=True)
+class FixedTendonContract:
+    name: str
+    root_joint: str
+    joint_names: tuple[str, ...]
+    coefficients: tuple[float, ...]
+    force_coefficients: tuple[float, ...]
+    lower: float
+    upper: float
+    source_solref_limit: tuple[float, float]
+    source_solimp_limit: tuple[float, float, float, float, float]
+    root_gearing: float
+    root_force_coefficient: float
+    stiffness: float
+    damping: float
+    limit_stiffness: float
+    offset: float
+    rest_length: float
+
+
+@dataclass(frozen=True)
 class ActuatorGroupContract:
     name: str
     joint_names: tuple[str, ...]
     policy: bool
+    actuated: bool
     effort_limit_sim: float
     velocity_limit_sim: float | None
     stiffness: float
@@ -72,12 +93,14 @@ class SerialLegContract:
     root_link: str
     root_position: tuple[float, float, float]
     root_rotation_wxyz: tuple[float, float, float, float]
+    canonical_mjcf: str
     canonical_urdf: str
     runtime_usd: str
     links: tuple[str, ...]
     policy_joint_order: tuple[str, ...]
     tree_joints: Mapping[str, TreeJointContract]
     loop_joints: Mapping[str, LoopJointContract]
+    fixed_tendons: Mapping[str, FixedTendonContract]
     actuator_groups: Mapping[str, ActuatorGroupContract]
     usd_importer: Mapping[str, bool]
     usd_gate: UsdGateContract
@@ -95,7 +118,16 @@ class SerialLegContract:
         return tuple(
             joint_name
             for group in self.actuator_groups.values()
-            if not group.policy
+            if group.actuated and not group.policy
+            for joint_name in group.joint_names
+        )
+
+    @property
+    def tendon_root_joint_names(self) -> tuple[str, ...]:
+        return tuple(
+            joint_name
+            for group in self.actuator_groups.values()
+            if not group.actuated
             for joint_name in group.joint_names
         )
 
@@ -165,6 +197,15 @@ def _vector3_text(value: str | None, context: str) -> tuple[float, float, float]
     if len(parts) != 3:
         raise SerialLegContractError(f"{context} must contain exactly three numbers")
     return tuple(_finite_float(float(item), f"{context}[]") for item in parts)  # type: ignore[return-value]
+
+
+def _numeric_text(value: str | None, size: int, context: str) -> tuple[float, ...]:
+    if value is None:
+        raise SerialLegContractError(f"{context} is missing")
+    parts = value.split()
+    if len(parts) != size:
+        raise SerialLegContractError(f"{context} must contain exactly {size} numbers")
+    return tuple(_finite_float(float(item), f"{context}[]") for item in parts)
 
 
 def _relative_asset_path(value: Any, context: str) -> str:
@@ -248,16 +289,16 @@ def _load_groups(
     raw: Any, profiles: Mapping[str, Mapping[str, float | None]]
 ) -> tuple[dict[str, ActuatorGroupContract], dict[str, str]]:
     groups_raw = _mapping(raw, "joints.groups")
-    if set(groups_raw) != {"legs", "wheels", "closed_chain_passive"}:
-        raise SerialLegContractError("joints.groups must define legs, wheels, and closed_chain_passive")
+    if set(groups_raw) != {"legs", "wheels", "closed_chain_passive", "tendon_roots"}:
+        raise SerialLegContractError("joints.groups must define legs, wheels, closed_chain_passive, and tendon_roots")
     groups: dict[str, ActuatorGroupContract] = {}
     joint_profiles: dict[str, str] = {}
     for raw_name, raw_group in groups_raw.items():
         name = _string(raw_name, "joints.groups key")
         group = _mapping(raw_group, f"joints.groups.{name}")
         role = group.get("role")
-        if role not in {"active", "passive"}:
-            raise SerialLegContractError(f"joints.groups.{name}.role must be active or passive")
+        if role not in {"active", "passive", "tendon_root"}:
+            raise SerialLegContractError(f"joints.groups.{name}.role is invalid")
         required = {"role", "profile", "joints"}
         optional = {"action_scale"}
         missing = required - set(group)
@@ -284,6 +325,7 @@ def _load_groups(
             else _finite_float(action_scale_raw, f"joints.groups.{name}.action_scale", non_negative=True)
         )
         policy = role == "active"
+        actuated = role != "tendon_root"
         if policy and (profile["velocity_limit_sim"] is None or action_scale is None):
             raise SerialLegContractError(f"active group {name} requires velocity_limit_sim and action_scale")
         if not policy and action_scale is not None:
@@ -292,6 +334,7 @@ def _load_groups(
             name=name,
             joint_names=joint_names,
             policy=policy,
+            actuated=actuated,
             effort_limit_sim=float(profile["effort_limit_sim"]),
             velocity_limit_sim=profile["velocity_limit_sim"],
             stiffness=float(profile["stiffness"]),
@@ -310,6 +353,7 @@ def _parse_canonical_urdf(
     joint_profile_names: Mapping[str, str],
     profiles: Mapping[str, Mapping[str, float | None]],
     loop_armature: float,
+    tendon_root_names: set[str],
 ) -> tuple[tuple[str, ...], dict[str, TreeJointContract], dict[str, LoopJointContract]]:
     if not urdf_path.is_file():
         raise SerialLegContractError(f"canonical URDF does not exist: {urdf_path}")
@@ -329,12 +373,20 @@ def _parse_canonical_urdf(
         name = _string(joint.attrib.get("name"), "canonical URDF joint name")
         if name in tree_joints:
             raise SerialLegContractError(f"duplicate canonical URDF joint {name}")
-        if joint.attrib.get("type") == "fixed":
-            raise SerialLegContractError(f"canonical SerialLeg tree must not contain fixed joint {name}")
+        joint_type = joint.attrib.get("type")
+        expected_type = "revolute" if name in tendon_root_names else "continuous"
+        if joint_type != expected_type:
+            raise SerialLegContractError(f"canonical URDF joint {name} must use type={expected_type}")
         parent = _string(_single_child(joint, "parent", name).attrib.get("link"), f"{name}.parent")
         child = _string(_single_child(joint, "child", name).attrib.get("link"), f"{name}.child")
         if parent not in links or child not in links or parent == child:
             raise SerialLegContractError(f"canonical URDF joint {name} has invalid endpoints")
+        if name in tendon_root_names:
+            limit = _single_child(joint, "limit", name)
+            lower = _finite_float(float(limit.attrib.get("lower", "nan")), f"{name}.limit.lower")
+            upper = _finite_float(float(limit.attrib.get("upper", "nan")), f"{name}.limit.upper")
+            if not lower < 0.0 < upper:
+                raise SerialLegContractError(f"tendon root {name} must have a non-locked range around zero")
         dynamics = _single_child(joint, "dynamics", name)
         damping = _finite_float(
             float(dynamics.attrib.get("damping", "nan")), f"{name}.dynamics.damping", non_negative=True
@@ -384,6 +436,120 @@ def _parse_canonical_urdf(
     if not loop_joints:
         raise SerialLegContractError("canonical URDF must contain at least one spherical loop_joint")
     return links, tree_joints, loop_joints
+
+
+def _parse_fixed_tendons(
+    mjcf_path: Path,
+    *,
+    robot_name: str,
+    tree_joints: Mapping[str, TreeJointContract],
+    policy_joint_order: tuple[str, ...],
+    tendon_root_names: tuple[str, ...],
+    raw: Any,
+) -> dict[str, FixedTendonContract]:
+    if not mjcf_path.is_file():
+        raise SerialLegContractError(f"canonical MJCF does not exist: {mjcf_path}")
+    try:
+        mujoco = ET.parse(mjcf_path).getroot()
+    except ET.ParseError as exc:
+        raise SerialLegContractError(f"invalid canonical MJCF {mjcf_path}: {exc}") from exc
+    if _local_name(mujoco.tag) != "mujoco" or mujoco.attrib.get("model") != robot_name:
+        raise SerialLegContractError("robot.name must match canonical MJCF <mujoco model>")
+    tendon_section = _single_child(mujoco, "tendon", "canonical MJCF")
+    fixed_elements = _children(tendon_section, "fixed")
+    if not fixed_elements:
+        raise SerialLegContractError("canonical MJCF must define fixed tendons")
+
+    cfg = _mapping(raw, "closed_chain.fixed_tendon")
+    _expect_keys(
+        cfg,
+        {
+            "root_joints",
+            "root_gearing",
+            "root_force_coefficient",
+            "stiffness",
+            "damping",
+            "limit_stiffness",
+            "offset",
+            "rest_length",
+        },
+        "closed_chain.fixed_tendon",
+    )
+    root_joints_raw = _mapping(cfg["root_joints"], "closed_chain.fixed_tendon.root_joints")
+    root_joints = {
+        _string(name, "fixed tendon name"): _string(joint, f"fixed tendon {name} root")
+        for name, joint in root_joints_raw.items()
+    }
+    if set(root_joints.values()) != set(tendon_root_names) or len(root_joints) != len(tendon_root_names):
+        raise SerialLegContractError("fixed tendon roots must partition tendon_root joints exactly")
+    parameters = {
+        key: _finite_float(cfg[key], f"closed_chain.fixed_tendon.{key}", non_negative=True)
+        for key in (
+            "root_gearing",
+            "root_force_coefficient",
+            "stiffness",
+            "damping",
+            "limit_stiffness",
+            "offset",
+            "rest_length",
+        )
+    }
+    if parameters["root_gearing"] != 0.0 or parameters["root_force_coefficient"] != 0.0:
+        raise SerialLegContractError("structural fixed-tendon roots require zero gearing and force coefficient")
+
+    policy_set = set(policy_joint_order)
+    covered: list[str] = []
+    tendons: dict[str, FixedTendonContract] = {}
+    for fixed in fixed_elements:
+        name = _string(fixed.attrib.get("name"), "canonical MJCF fixed tendon name")
+        if name in tendons or name not in root_joints or fixed.attrib.get("limited") != "true":
+            raise SerialLegContractError(f"fixed tendon {name!r} is duplicated, unmapped, or not limited")
+        lower, upper = _numeric_text(fixed.attrib.get("range"), 2, f"{name}.range")
+        if not lower < upper:
+            raise SerialLegContractError(f"fixed tendon {name} must have lower < upper")
+        joint_names: list[str] = []
+        coefficients: list[float] = []
+        for joint in _children(fixed, "joint"):
+            joint_name = _string(joint.attrib.get("joint"), f"{name}.joint")
+            coefficient = _finite_float(float(joint.attrib.get("coef", "nan")), f"{name}.{joint_name}.coef")
+            if joint_name in joint_names or coefficient == 0.0 or joint_name not in policy_set:
+                raise SerialLegContractError(f"fixed tendon {name} has an invalid policy joint axis")
+            joint_names.append(joint_name)
+            coefficients.append(coefficient)
+        if len(joint_names) != 2:
+            raise SerialLegContractError(f"fixed tendon {name} must contain exactly two policy axes")
+        root_joint = root_joints[name]
+        mount_link = tree_joints[root_joint].child
+        if any(tree_joints[joint_name].parent != mount_link for joint_name in joint_names):
+            raise SerialLegContractError(f"fixed tendon {name} axes are not direct children of root mount")
+        default_length = sum(
+            coefficient * tree_joints[joint_name].default_position
+            for joint_name, coefficient in zip(joint_names, coefficients, strict=True)
+        )
+        if not lower <= default_length <= upper:
+            raise SerialLegContractError(f"standing state violates fixed tendon {name}")
+        covered.extend(joint_names)
+        tendons[name] = FixedTendonContract(
+            name=name,
+            root_joint=root_joint,
+            joint_names=tuple(joint_names),
+            coefficients=tuple(coefficients),
+            force_coefficients=tuple(coefficients),
+            lower=lower,
+            upper=upper,
+            source_solref_limit=_numeric_text(fixed.attrib.get("solreflimit"), 2, f"{name}.solreflimit"),  # type: ignore[arg-type]
+            source_solimp_limit=_numeric_text(fixed.attrib.get("solimplimit"), 5, f"{name}.solimplimit"),  # type: ignore[arg-type]
+            root_gearing=parameters["root_gearing"],
+            root_force_coefficient=parameters["root_force_coefficient"],
+            stiffness=parameters["stiffness"],
+            damping=parameters["damping"],
+            limit_stiffness=parameters["limit_stiffness"],
+            offset=parameters["offset"],
+            rest_length=parameters["rest_length"],
+        )
+    if set(tendons) != set(root_joints) or set(covered) != set(policy_joint_order[:4]):
+        raise SerialLegContractError("fixed tendons must partition the four policy leg joints exactly")
+    return tendons
 
 
 def _load_usd(raw: Any) -> tuple[dict[str, bool], UsdGateContract]:
@@ -452,13 +618,14 @@ def load_serialleg_contract(path: Path = DEFAULT_SERIALLEG_CONTRACT_PATH) -> Ser
         "robot_config",
     )
     schema_version = _positive_int(raw["schema_version"], "schema_version")
-    if schema_version != 2:
+    if schema_version != 3:
         raise SerialLegContractError(f"unsupported schema_version {schema_version}")
 
     robot = _mapping(raw["robot"], "robot")
-    _expect_keys(robot, {"name", "root_link", "canonical_urdf", "runtime_usd"}, "robot")
+    _expect_keys(robot, {"name", "root_link", "canonical_mjcf", "canonical_urdf", "runtime_usd"}, "robot")
     robot_name = _string(robot["name"], "robot.name")
     root_link = _string(robot["root_link"], "robot.root_link")
+    canonical_mjcf = _relative_asset_path(robot["canonical_mjcf"], "robot.canonical_mjcf")
     canonical_urdf = _relative_asset_path(robot["canonical_urdf"], "robot.canonical_urdf")
     runtime_usd = _relative_asset_path(robot["runtime_usd"], "robot.runtime_usd")
 
@@ -493,8 +660,11 @@ def load_serialleg_contract(path: Path = DEFAULT_SERIALLEG_CONTRACT_PATH) -> Ser
         raise SerialLegContractError("joints.policy_order does not match active joint groups")
 
     closed_chain = _mapping(raw["closed_chain"], "closed_chain")
-    _expect_keys(closed_chain, {"loop_armature"}, "closed_chain")
+    _expect_keys(closed_chain, {"loop_armature", "fixed_tendon"}, "closed_chain")
     loop_armature = _finite_float(closed_chain["loop_armature"], "closed_chain.loop_armature", non_negative=True)
+    tendon_root_names = tuple(
+        joint_name for group in actuator_groups.values() if not group.actuated for joint_name in group.joint_names
+    )
     urdf_path = path.parent / canonical_urdf
     links, tree_joints, loop_joints = _parse_canonical_urdf(
         urdf_path,
@@ -504,6 +674,15 @@ def load_serialleg_contract(path: Path = DEFAULT_SERIALLEG_CONTRACT_PATH) -> Ser
         joint_profile_names=joint_profile_names,
         profiles=profiles,
         loop_armature=loop_armature,
+        tendon_root_names=set(tendon_root_names),
+    )
+    fixed_tendons = _parse_fixed_tendons(
+        path.parent / canonical_mjcf,
+        robot_name=robot_name,
+        tree_joints=tree_joints,
+        policy_joint_order=policy_joint_order,
+        tendon_root_names=tendon_root_names,
+        raw=closed_chain["fixed_tendon"],
     )
     usd_importer, usd_gate = _load_usd(raw["usd"])
     return SerialLegContract(
@@ -512,12 +691,14 @@ def load_serialleg_contract(path: Path = DEFAULT_SERIALLEG_CONTRACT_PATH) -> Ser
         root_link=root_link,
         root_position=root_position,  # type: ignore[arg-type]
         root_rotation_wxyz=root_rotation_wxyz,
+        canonical_mjcf=canonical_mjcf,
         canonical_urdf=canonical_urdf,
         runtime_usd=runtime_usd,
         links=links,
         policy_joint_order=policy_joint_order,
         tree_joints=MappingProxyType(tree_joints),
         loop_joints=MappingProxyType(loop_joints),
+        fixed_tendons=MappingProxyType(fixed_tendons),
         actuator_groups=MappingProxyType(actuator_groups),
         usd_importer=MappingProxyType(usd_importer),
         usd_gate=usd_gate,

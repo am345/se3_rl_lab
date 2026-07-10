@@ -56,13 +56,16 @@ EXPECTED_LOOPS = {
     name: (loop.body0, loop.local_pos0, loop.body1, loop.local_pos1)
     for name, loop in SERIALLEG_CONTRACT.loop_joints.items()
 }
+EXPECTED_FIXED_TENDONS = dict(SERIALLEG_CONTRACT.fixed_tendons)
+TENDON_ROOT_JOINTS = set(SERIALLEG_CONTRACT.tendon_root_joint_names)
+TENDON_MOUNT_LINKS = {SERIALLEG_CONTRACT.tree_joints[name].child for name in TENDON_ROOT_JOINTS}
 EXPECTED_LOOP_ARMATURES = {name: loop.armature for name, loop in SERIALLEG_CONTRACT.loop_joints.items()}
 if len(set(EXPECTED_LOOP_ARMATURES.values())) != 1:
     raise RuntimeError("SerialLeg loop joints must currently share one armature value")
 LOOP_JOINT_ARMATURE = next(iter(EXPECTED_LOOP_ARMATURES.values()))
 
 EXPECTED_TOTAL_MASS = SERIALLEG_CONTRACT.usd_gate.expected_total_mass
-EXPECTED_URDF_SHA256 = "280d74c4aa7b9f1ee98c10aaabb77efe15fe9b965363ea8b67c86fdad440dd3e"
+EXPECTED_URDF_SHA256 = "c05250993b1bbcf27096a8fa76c21fc047b0d687188a61f60dbdb1c85080f820"
 EXPECTED_VISUAL_COUNT = SERIALLEG_CONTRACT.usd_gate.expected_visual_count
 EXPECTED_COLLISION_MESH_COUNT = SERIALLEG_CONTRACT.usd_gate.expected_collision_mesh_count
 EXPECTED_COLLISION_FACE_COUNT = SERIALLEG_CONTRACT.usd_gate.expected_collision_face_count
@@ -184,8 +187,9 @@ def _validate_urdf(urdf_path: Path) -> SourceContract:
         )
     for name, (expected_parent, expected_child, _armature) in EXPECTED_TREE_JOINTS.items():
         joint = joints[name]
-        if joint.attrib.get("type") != "continuous":
-            raise ConversionError(f"{name} must remain continuous; coupled limits are not independent URDF limits")
+        expected_type = "revolute" if name in TENDON_ROOT_JOINTS else "continuous"
+        if joint.attrib.get("type") != expected_type:
+            raise ConversionError(f"{name} must remain {expected_type}")
         parent = joint.find("parent")
         child = joint.find("child")
         if parent is None or parent.attrib.get("link") != expected_parent:
@@ -205,6 +209,16 @@ def _validate_urdf(urdf_path: Path) -> SourceContract:
             EXPECTED_JOINT_FRICTION[name],
             f"{name} source friction",
         )
+        limit = joint.find("limit")
+        if name in TENDON_ROOT_JOINTS:
+            if limit is None:
+                raise ConversionError(f"tendon root {name} is missing its narrow URDF limit")
+            lower = float(limit.attrib.get("lower", "nan"))
+            upper = float(limit.attrib.get("upper", "nan"))
+            if not lower < 0.0 < upper:
+                raise ConversionError(f"tendon root {name} must have a non-locked range around zero")
+        elif limit is not None:
+            raise ConversionError(f"source joint {name} must not gain an independent URDF limit")
 
     loop_elements = {element.attrib.get("name", ""): element for element in root.findall("loop_joint")}
     if set(loop_elements) != set(EXPECTED_LOOPS):
@@ -407,6 +421,40 @@ def _set_neutral_tree_joint_physics(prim: Any, damping: float) -> None:
     drive.GetTargetVelocityAttr().Block()
 
 
+def _author_fixed_tendons(revolute_joints: dict[str, Any]) -> None:
+    """Author the contract fixed tendons using PhysX angular degree units."""
+    from pxr import PhysxSchema
+
+    for name, tendon in EXPECTED_FIXED_TENDONS.items():
+        root_prim = revolute_joints[tendon.root_joint]
+        root_api = PhysxSchema.PhysxTendonAxisRootAPI.Apply(root_prim, name)
+        if not root_api:
+            raise ConversionError(f"failed to apply fixed-tendon root {name} to {tendon.root_joint}")
+        root_axis_api = PhysxSchema.PhysxTendonAxisAPI(root_api, name)
+        root_axis_api.CreateGearingAttr().Set([tendon.root_gearing])
+        root_axis_api.CreateForceCoefficientAttr().Set([tendon.root_force_coefficient])
+        root_api.CreateTendonEnabledAttr().Set(True)
+        root_api.CreateStiffnessAttr().Set(math.radians(tendon.stiffness))
+        root_api.CreateDampingAttr().Set(math.radians(tendon.damping))
+        root_api.CreateLimitStiffnessAttr().Set(math.radians(tendon.limit_stiffness))
+        root_api.CreateOffsetAttr().Set(math.degrees(tendon.offset))
+        root_api.CreateRestLengthAttr().Set(math.degrees(tendon.rest_length))
+        root_api.CreateLowerLimitAttr().Set(math.degrees(tendon.lower))
+        root_api.CreateUpperLimitAttr().Set(math.degrees(tendon.upper))
+
+        for joint_name, gearing, force_coefficient in zip(
+            tendon.joint_names,
+            tendon.coefficients,
+            tendon.force_coefficients,
+            strict=True,
+        ):
+            axis_api = PhysxSchema.PhysxTendonAxisAPI.Apply(revolute_joints[joint_name], name)
+            if not axis_api:
+                raise ConversionError(f"failed to apply fixed-tendon axis {name} to {joint_name}")
+            axis_api.CreateGearingAttr().Set([gearing])
+            axis_api.CreateForceCoefficientAttr().Set([force_coefficient])
+
+
 def _remove_transient_visuals(stage: Any, robot_prim_path: Any) -> None:
     """Remove every importer-created dummy visual scope before flattening."""
     removed_paths = []
@@ -533,6 +581,8 @@ def _postprocess_imported_stage(stage: Any, source: SourceContract) -> None:
         _set_armature(prim, EXPECTED_TREE_JOINTS[name][2], axis="angular")
         _set_neutral_tree_joint_physics(prim, EXPECTED_JOINT_DAMPING[name])
 
+    _author_fixed_tendons(revolute_joints)
+
     for prim in spherical_joints.values():
         joint = UsdPhysics.Joint(prim)
         joint.CreateExcludeFromArticulationAttr(True)
@@ -552,6 +602,7 @@ def _postprocess_imported_stage(stage: Any, source: SourceContract) -> None:
                 f"{key}={str(value).lower()}" for key, value in sorted(IMPORTER_SETTINGS.items())
             ),
             "se3RlLab:loopJointArmature": LOOP_JOINT_ARMATURE,
+            "se3RlLab:fixedTendonNames": ",".join(sorted(EXPECTED_FIXED_TENDONS)),
             "se3RlLab:sourceVisualCount": EXPECTED_VISUAL_COUNT,
             "se3RlLab:transientDummyVisualCount": len(EXPECTED_LINKS),
             "se3RlLab:importCollisionMeshCount": EXPECTED_COLLISION_MESH_COUNT,
@@ -625,6 +676,8 @@ def _validate_layer_metadata(stage: Any, source: SourceContract) -> Any:
         LOOP_JOINT_ARMATURE,
         "USD loop armature metadata",
     )
+    if metadata.get("se3RlLab:fixedTendonNames") != ",".join(sorted(EXPECTED_FIXED_TENDONS)):
+        raise ConversionError("USD fixed-tendon metadata does not match the canonical contract")
     if metadata.get("se3RlLab:visualPolicy") != VISUAL_POLICY:
         raise ConversionError("USD visual policy metadata does not match the collision-only contract")
     if int(metadata.get("se3RlLab:sourceVisualCount", -1)) != EXPECTED_VISUAL_COUNT:
@@ -753,7 +806,7 @@ def _validate_articulation(inventory: StageInventory) -> Any:
         raise ConversionError(f"USD rigid-body link set changed: {sorted(inventory.links)}")
     if len(inventory.rigid_bodies) != len(EXPECTED_LINKS):
         paths = [str(prim.GetPath()) for prim in inventory.rigid_bodies]
-        raise ConversionError(f"expected exactly 11 rigid bodies, got {len(paths)}: {paths}")
+        raise ConversionError(f"expected exactly {len(EXPECTED_LINKS)} rigid bodies, got {len(paths)}: {paths}")
     if len(inventory.articulation_roots) != 1 or inventory.articulation_roots[0].GetName() != "base_link":
         paths = [str(prim.GetPath()) for prim in inventory.articulation_roots]
         raise ConversionError(f"expected one articulation root on base_link, got {paths}")
@@ -845,10 +898,18 @@ def _validate_tree_joints(inventory: StageInventory) -> list[tuple[str, str]]:
         ):
             if attribute.Get() is not None:
                 raise ConversionError(f"{name} drive {label} must be blocked")
-        for attribute_name in ("physics:lowerLimit", "physics:upperLimit"):
-            limit = prim.GetAttribute(attribute_name)
-            if limit and limit.HasAuthoredValueOpinion() and math.isfinite(float(limit.Get())):
-                raise ConversionError(f"{name} must not have a finite independent joint limit")
+        lower_limit = prim.GetAttribute("physics:lowerLimit")
+        upper_limit = prim.GetAttribute("physics:upperLimit")
+        if name in TENDON_ROOT_JOINTS:
+            if not lower_limit or not upper_limit:
+                raise ConversionError(f"tendon root {name} is missing imported narrow limits")
+            if not float(lower_limit.Get()) < 0.0 < float(upper_limit.Get()):
+                raise ConversionError(f"tendon root {name} limits do not straddle zero")
+        elif any(
+            limit and limit.HasAuthoredValueOpinion() and math.isfinite(float(limit.Get()))
+            for limit in (lower_limit, upper_limit)
+        ):
+            raise ConversionError(f"{name} must not have a finite independent joint limit")
         tree_edges.append((parent, child))
     return tree_edges
 
@@ -905,6 +966,78 @@ def _validate_loop_joints(inventory: StageInventory) -> None:
             raise ConversionError(f"{name} must not have a drive API")
 
 
+def _validate_fixed_tendons(inventory: StageInventory) -> None:
+    from pxr import PhysxSchema
+
+    observed_roots: dict[str, str] = {}
+    observed_axes: dict[str, set[str]] = {}
+    for joint_name, prim in inventory.revolute_joints.items():
+        for schema in prim.GetAppliedSchemas():
+            if schema.startswith("PhysxTendonAxisRootAPI:"):
+                tendon_name = schema.split(":", 1)[1]
+                observed_roots[tendon_name] = joint_name
+            elif schema.startswith("PhysxTendonAxisAPI:"):
+                tendon_name = schema.split(":", 1)[1]
+                observed_axes.setdefault(tendon_name, set()).add(joint_name)
+    if set(observed_roots) != set(EXPECTED_FIXED_TENDONS):
+        raise ConversionError(f"unexpected fixed-tendon roots: {observed_roots}")
+
+    for name, tendon in EXPECTED_FIXED_TENDONS.items():
+        if observed_roots[name] != tendon.root_joint:
+            raise ConversionError(f"fixed tendon {name} root changed to {observed_roots[name]}")
+        expected_axes = set(tendon.joint_names) | {tendon.root_joint}
+        if observed_axes.get(name, set()) != expected_axes:
+            raise ConversionError(f"fixed tendon {name} child axes changed: {observed_axes.get(name, set())}")
+        root_prim = inventory.revolute_joints[tendon.root_joint]
+        root_api = PhysxSchema.PhysxTendonAxisRootAPI.Get(root_prim, name)
+        if not root_api or root_api.GetTendonEnabledAttr().Get() is not True:
+            raise ConversionError(f"fixed tendon {name} root is missing or disabled")
+        scalar_expectations = (
+            (root_api.GetStiffnessAttr(), math.radians(tendon.stiffness), "stiffness"),
+            (root_api.GetDampingAttr(), math.radians(tendon.damping), "damping"),
+            (root_api.GetLimitStiffnessAttr(), math.radians(tendon.limit_stiffness), "limit stiffness"),
+            (root_api.GetOffsetAttr(), math.degrees(tendon.offset), "offset"),
+            (root_api.GetRestLengthAttr(), math.degrees(tendon.rest_length), "rest length"),
+            (root_api.GetLowerLimitAttr(), math.degrees(tendon.lower), "lower limit"),
+            (root_api.GetUpperLimitAttr(), math.degrees(tendon.upper), "upper limit"),
+        )
+        for attribute, expected, label in scalar_expectations:
+            if not attribute.HasAuthoredValueOpinion():
+                raise ConversionError(f"fixed tendon {name} has no authored {label}")
+            _assert_close(float(attribute.Get()), expected, f"fixed tendon {name} {label}", tolerance=1.0e-5)
+
+        for attribute_name, expected, label in (
+            (f"physxTendon:{name}:gearing", tendon.root_gearing, "root gearing"),
+            (
+                f"physxTendon:{name}:forceCoefficient",
+                tendon.root_force_coefficient,
+                "root force coefficient",
+            ),
+        ):
+            attribute = root_prim.GetAttribute(attribute_name)
+            values = attribute.Get() if attribute and attribute.HasAuthoredValueOpinion() else None
+            if values is None or len(values) != 1:
+                raise ConversionError(f"fixed tendon {name} has invalid {label}: {values}")
+            _assert_close(float(values[0]), expected, f"fixed tendon {name} {label}")
+
+        for joint_name, gearing, force_coefficient in zip(
+            tendon.joint_names,
+            tendon.coefficients,
+            tendon.force_coefficients,
+            strict=True,
+        ):
+            axis_api = PhysxSchema.PhysxTendonAxisAPI.Get(inventory.revolute_joints[joint_name], name)
+            if not axis_api:
+                raise ConversionError(f"fixed tendon {name} is missing child axis {joint_name}")
+            for values, expected, label in (
+                (axis_api.GetGearingAttr().Get(), gearing, "gearing"),
+                (axis_api.GetForceCoefficientAttr().Get(), force_coefficient, "force coefficient"),
+            ):
+                if values is None or len(values) != 1:
+                    raise ConversionError(f"fixed tendon {name}/{joint_name} has invalid {label}: {values}")
+                _assert_close(float(values[0]), expected, f"fixed tendon {name}/{joint_name} {label}")
+
+
 def _validate_mass_and_shapes(inventory: StageInventory) -> tuple[float, int]:
     from pxr import UsdGeom, UsdPhysics
 
@@ -919,7 +1052,14 @@ def _validate_mass_and_shapes(inventory: StageInventory) -> tuple[float, int]:
     collision_root_links = {prim.GetParent().GetName() for prim in inventory.collision_roots}
     if collision_root_links != EXPECTED_LINKS or len(inventory.collision_roots) != len(EXPECTED_LINKS):
         paths = [str(prim.GetPath()) for prim in inventory.collision_roots]
-        raise ConversionError(f"expected one collision scope per link, got {paths}")
+        raise ConversionError(f"expected one importer collision scope per link, got {paths}")
+    mount_geometry = [
+        prim
+        for prim in inventory.geometry_prims
+        if any(mount_name in str(prim.GetPath()).split("/") for mount_name in TENDON_MOUNT_LINKS)
+    ]
+    if mount_geometry:
+        raise ConversionError(f"virtual tendon mounts must remain geometry-free: {mount_geometry}")
     if inventory.visual_roots:
         paths = [str(prim.GetPath()) for prim in inventory.visual_roots]
         raise ConversionError(f"collision-only USD contains active visual scopes: {paths}")
@@ -1041,6 +1181,7 @@ def _validate_saved_usd(usd_path: Path, source: SourceContract) -> dict[str, Any
     _validate_joint_sets(inventory)
     _validate_connected_tree(_validate_tree_joints(inventory))
     _validate_loop_joints(inventory)
+    _validate_fixed_tendons(inventory)
     total_mass, collision_faces = _validate_mass_and_shapes(inventory)
 
     _layers, _assets, unresolved = UsdUtils.ComputeAllDependencies(str(usd_path))
@@ -1053,6 +1194,7 @@ def _validate_saved_usd(usd_path: Path, source: SourceContract) -> dict[str, Any
         "links": len(inventory.links),
         "tree_joints": len(inventory.revolute_joints),
         "loop_joints": len(inventory.spherical_joints),
+        "fixed_tendons": len(EXPECTED_FIXED_TENDONS),
         "total_mass": total_mass,
         "usd_bytes": usd_size,
         "collision_meshes": len(inventory.meshes),
@@ -1171,7 +1313,8 @@ def main() -> int:
             "[serialleg-usd] "
             f"default_prim={summary['default_prim']} articulation_root={summary['articulation_root']} "
             f"links={summary['links']} tree_joints={summary['tree_joints']} "
-            f"external_loop_joints={summary['loop_joints']} collision_meshes={summary['collision_meshes']} "
+            f"external_loop_joints={summary['loop_joints']} fixed_tendons={summary['fixed_tendons']} "
+            f"collision_meshes={summary['collision_meshes']} "
             f"collision_faces={summary['collision_faces']} cylinders={summary['cylinders']} "
             f"visual_geometries={summary['visual_geometries']} usd_bytes={summary['usd_bytes']} "
             f"total_mass={summary['total_mass']:.8f}kg",

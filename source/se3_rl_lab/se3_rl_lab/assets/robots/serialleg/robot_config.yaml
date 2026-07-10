@@ -1,11 +1,12 @@
 # SerialLeg human-authored robot contract.
 # Topology, joint parent/child links, URDF dynamics, and loop attachment frames are
 # derived from canonical_urdf and strongly validated by serialleg_contract.py.
-schema_version: 2
+schema_version: 3
 
 robot:
   name: serialleg_closed_chain_complex_collision
   root_link: base_link
+  canonical_mjcf: mjcf/serialleg_closed_chain_complex_collision.xml
   canonical_urdf: urdf/serialleg_closed_chain_complex_collision.urdf
   runtime_usd: usd/serialleg_closed_chain_complex_collision.usd
 
@@ -14,11 +15,13 @@ init_state:
   root_pos: [0.0, 0.0, 0.22]
   root_rot: [0.0, 0.0, 0.0, 1.0]
   joint_pos:
+    l_tendon_root_Joint: 0.0
     lf0_Joint: -0.275422946189
     lf1_Joint: -1.242259649307
     l_wheel_Joint: 0.0
     l_drive_bar_Joint: -1.592100148957
     l_coupler_Joint: 1.40126634
+    r_tendon_root_Joint: 0.0
     rf0_Joint: 0.275422946189
     rf1_Joint: 1.242259649307
     r_wheel_Joint: 0.0
@@ -51,6 +54,10 @@ joints:
       role: passive
       profile: linkage
       joints: [lf1_Joint, l_coupler_Joint, rf1_Joint, r_coupler_Joint]
+    tendon_roots:
+      role: tendon_root
+      profile: tendon_root
+      joints: [l_tendon_root_Joint, r_tendon_root_Joint]
 
 # Profiles keep per-role physics and actuator values readable without repeating
 # the same numbers for every joint.
@@ -72,10 +79,29 @@ joint_profiles:
     effort_limit_sim: 0.0
     stiffness: 0.0
     damping: 0.0
+  tendon_root:
+    armature: 0.0
+    effort_limit_sim: 0.0
+    velocity_limit_sim: 0.1
+    stiffness: 0.0
+    damping: 0.0
 
 closed_chain:
   # The two spherical loop joints and their frames are derived from canonical_urdf.
   loop_armature: 0.005
+  # Axes, coefficients, ranges, and MuJoCo limit solver metadata are derived from
+  # canonical_mjcf. These parameters configure their PhysX fixed-tendon form.
+  fixed_tendon:
+    root_joints:
+      l_active_rod_angle: l_tendon_root_Joint
+      r_active_rod_angle: r_tendon_root_Joint
+    root_gearing: 0.0
+    root_force_coefficient: 0.0
+    stiffness: 0.0
+    damping: 20.0
+    limit_stiffness: 4000.0
+    offset: 0.0
+    rest_length: 0.0
 
 usd:
   importer:

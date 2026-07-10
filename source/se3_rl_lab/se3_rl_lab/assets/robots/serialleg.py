@@ -65,6 +65,10 @@ SERIALLEG_CLOSED_CHAIN_CFG = ArticulationCfg(
         joint_pos=SERIALLEG_DEFAULT_JOINT_POS,
         joint_vel={".*": 0.0},
     ),
-    actuators={group_name: _actuator_cfg(group_name) for group_name in SERIALLEG_CONTRACT.actuator_groups},
+    actuators={
+        group_name: _actuator_cfg(group_name)
+        for group_name, group in SERIALLEG_CONTRACT.actuator_groups.items()
+        if group.actuated
+    },
 )
 """SerialLeg closed-chain USD articulation configuration."""
