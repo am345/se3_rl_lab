@@ -19,6 +19,7 @@ EXTENSION_TOML_DATA = toml.load(os.path.join(EXTENSION_PATH, "config", "extensio
 INSTALL_REQUIRES = [
     # NOTE: Add dependencies
     "psutil",
+    "pyyaml>=6.0,<7",
 ]
 
 # Installation operation
@@ -39,7 +40,7 @@ setup(
             "assets/robots/serialleg/mjcf/*.xml",
             "assets/robots/serialleg/urdf/*.urdf",
             "assets/robots/serialleg/usd/*.usd",
-            "assets/robots/serialleg/*.toml",
+            "assets/robots/serialleg/*.yaml",
             "assets/robots/serialleg/meshes/**/*.stl",
         ]
     },

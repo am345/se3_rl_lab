@@ -3127,6 +3127,7 @@ dependencies = [
     { name = "isaaclab-rl", extra = ["rsl-rl"] },
     { name = "isaaclab-tasks" },
     { name = "psutil" },
+    { name = "pyyaml" },
 ]
 
 [package.metadata]
@@ -3137,6 +3138,7 @@ requires-dist = [
     { name = "isaaclab-rl", extras = ["rsl-rl"], editable = "/home/am345/IsaacLab/source/isaaclab_rl" },
     { name = "isaaclab-tasks", editable = "/home/am345/IsaacLab/source/isaaclab_tasks" },
     { name = "psutil" },
+    { name = "pyyaml", specifier = ">=6.0,<7" },
 ]
 
 [[package]]

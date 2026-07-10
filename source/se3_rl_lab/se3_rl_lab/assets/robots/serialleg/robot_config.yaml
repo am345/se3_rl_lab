@@ -1,0 +1,98 @@
+# SerialLeg human-authored robot contract.
+# Topology, joint parent/child links, URDF dynamics, and loop attachment frames are
+# derived from canonical_urdf and strongly validated by serialleg_contract.py.
+schema_version: 2
+
+robot:
+  name: serialleg_closed_chain_complex_collision
+  root_link: base_link
+  canonical_urdf: urdf/serialleg_closed_chain_complex_collision.urdf
+  runtime_usd: usd/serialleg_closed_chain_complex_collision.usd
+
+init_state:
+  # Quaternion is written as [x, y, z, w] for readability and converted for IsaacLab.
+  root_pos: [0.0, 0.0, 0.22]
+  root_rot: [0.0, 0.0, 0.0, 1.0]
+  joint_pos:
+    lf0_Joint: -0.275422946189
+    lf1_Joint: -1.242259649307
+    l_wheel_Joint: 0.0
+    l_drive_bar_Joint: -1.592100148957
+    l_coupler_Joint: 1.40126634
+    rf0_Joint: 0.275422946189
+    rf1_Joint: 1.242259649307
+    r_wheel_Joint: 0.0
+    r_drive_bar_Joint: 1.592100148957
+    r_coupler_Joint: -1.40126941
+
+joints:
+  # Action/observation order is part of the policy interface.
+  policy_order:
+    - lf0_Joint
+    - l_drive_bar_Joint
+    - rf0_Joint
+    - r_drive_bar_Joint
+    - l_wheel_Joint
+    - r_wheel_Joint
+
+  # Groups express semantic roles; every URDF tree joint must appear exactly once.
+  groups:
+    legs:
+      role: active
+      profile: leg
+      joints: [lf0_Joint, l_drive_bar_Joint, rf0_Joint, r_drive_bar_Joint]
+      action_scale: 40.0
+    wheels:
+      role: active
+      profile: wheel
+      joints: [l_wheel_Joint, r_wheel_Joint]
+      action_scale: 3.71
+    closed_chain_passive:
+      role: passive
+      profile: linkage
+      joints: [lf1_Joint, l_coupler_Joint, rf1_Joint, r_coupler_Joint]
+
+# Profiles keep per-role physics and actuator values readable without repeating
+# the same numbers for every joint.
+joint_profiles:
+  leg:
+    armature: 0.01
+    effort_limit_sim: 40.0
+    velocity_limit_sim: 16.755160819145562
+    stiffness: 60.0
+    damping: 3.0
+  wheel:
+    armature: 0.005
+    effort_limit_sim: 3.71
+    velocity_limit_sim: 71.81
+    stiffness: 0.0
+    damping: 0.08
+  linkage:
+    armature: 0.02
+    effort_limit_sim: 0.0
+    stiffness: 0.0
+    damping: 0.0
+
+closed_chain:
+  # The two spherical loop joints and their frames are derived from canonical_urdf.
+  loop_armature: 0.005
+
+usd:
+  importer:
+    fix_base: false
+    merge_fixed_joints: false
+    import_inertia_tensor: true
+    make_default_prim: true
+    create_physics_scene: false
+    self_collision: false
+    collision_from_visuals: false
+    # Wheel contact geometry must remain a cylinder.
+    replace_cylinders_with_capsules: false
+
+  gate:
+    expected_total_mass: 12.72874558
+    expected_visual_count: 0
+    expected_collision_mesh_count: 54
+    expected_collision_face_count: 7102
+    expected_collision_point_index_count: 21306
+    max_collision_only_usd_bytes: 5242880

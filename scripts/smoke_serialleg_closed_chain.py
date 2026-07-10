@@ -27,7 +27,7 @@ def _load_serialleg_contract() -> Any:
     module = importlib.util.module_from_spec(spec)
     sys.modules[module_name] = module
     spec.loader.exec_module(module)
-    return module.load_serialleg_contract(ASSET_DIR / "serialleg_contract.toml")
+    return module.load_serialleg_contract(ASSET_DIR / "robot_config.yaml")
 
 
 CONTRACT = _load_serialleg_contract()
