@@ -1,0 +1,234 @@
+# se3_rl_lab
+
+SerialLeg 迁移到 IsaacLab 的新训练仓库。
+
+本仓库从 IsaacLab 官方 external project 模板生成，当前选择为：
+
+- 工作流：Manager-based single-agent
+- RL 框架：`rsl_rl`
+- 当前任务骨架：`SerialLeg-Flat-ClosedChain-v0`
+
+当前状态：uv 环境已安装，SerialLeg 资产和任务骨架已初步接入。闭链资产已经完成
+`MJCF → 开链树形 URDF + spherical loop_joint → importer-generated USD`，并通过 USD 静态 gate 与单环境
+CPU/PhysX smoke；训练任务目前仍使用旧的 MJCF custom spawner，尚未切换到新 USD，也尚未完成动作、观测、奖励和 PPO 配置迁移。
+
+## 目标
+
+本仓库只负责 IsaacLab 版 SerialLeg flat 训练迁移，不把旧仓库 `/home/am345/se3_rl` 作为运行时依赖。
+
+旧仓库只作为迁移参考，用来对齐：
+
+- 6D policy-order 动作：`[LF0, LB, RF0, RB, L_WHEEL, R_WHEEL]`
+- 自定义动作延迟
+- 34D actor observation
+- 40D critic privileged observation
+- flat 任务奖励、终止条件和 PPO/GRU 配置
+
+## SerialLeg 声明式 contract
+
+`source/se3_rl_lab/se3_rl_lab/assets/robots/serialleg/serialleg_contract.toml` 是 SerialLeg 资产与转换流程的
+单一配置来源，集中声明：
+
+- 11 个 link、10 个 tree joint 和 2 个 spherical loop joint 的拓扑与局部 attachment pose；
+- 6 个 policy joint 的固定顺序、4 个 passive joint、standing joint pose；
+- joint armature、源 damping/friction、三组 IsaacLab actuator 参数和 action scale；
+- Isaac URDF importer 设置及 collision-only USD 的几何/大小 gate。
+
+`serialleg_contract.py` 会在导入时校验 key、数值、rooted-tree、actuator partition、policy order、loop endpoint 以及
+wheel cylinder/importer 不变量。USD converter 与 IsaacLab asset/task 都从该 contract 派生参数；生成的 USD metadata
+同时记录 contract 路径和 SHA256。修改 contract 后，现有 USD 的 `--check` 会失败，必须重新生成并重跑 smoke。
+
+## 环境准备
+
+本仓库使用 uv 管理环境。
+
+安装锁定环境：
+
+```bash
+uv sync
+```
+
+当前 `pyproject.toml` 中已经包含 IsaacLab / Isaac Sim / PyTorch cu128 相关依赖配置，真实 `uv sync` 已验证通过。
+
+## 生成 SerialLeg 闭链 USD
+
+先从 canonical MJCF 确定性生成并检查开链 URDF：
+
+```bash
+uv run python scripts/convert_serialleg_mjcf_to_urdf.py
+uv run python scripts/convert_serialleg_mjcf_to_urdf.py --check
+```
+
+接受 NVIDIA Omniverse EULA 后，通过 Isaac Sim 5.1 importer 生成并检查自包含 USD。canonical MJCF、URDF 和
+最终 USD 均为 collision-only，不再携带原始高模 visual：
+
+```bash
+OMNI_KIT_ACCEPT_EULA=YES uv run python scripts/convert_serialleg_urdf_to_usd.py
+OMNI_KIT_ACCEPT_EULA=YES uv run python scripts/convert_serialleg_urdf_to_usd.py --check
+```
+
+运行 bounded CPU/PhysX gate：
+
+```bash
+OMNI_KIT_ACCEPT_EULA=YES uv run python scripts/smoke_serialleg_usd.py --headless --device cpu --steps 64
+```
+
+运行 400 步地面接触力 gate；该模式强制确认左右 wheel 仍是 direct `Cylinder` collider、
+`/physics/collisionApproximateCylinders=False`，并通过 IsaacLab `ContactSensor.net_forces_w` 验收两个轮子和至少一个
+mesh-backed link 的有限非零接触力：
+
+```bash
+OMNI_KIT_ACCEPT_EULA=YES uv run python scripts/smoke_serialleg_usd.py --headless --device cpu --ground-contact
+OMNI_KIT_ACCEPT_EULA=YES uv run python scripts/smoke_serialleg_usd.py --headless --device cuda:0 --ground-contact
+```
+
+free-space 闭环 residual gate 保持 `1e-5 m`；ground-contact 包含落地与后续 mesh 冲击，单独使用
+`2e-4 m` gate。render-only collision preview 无 Physics API，不参与该测试。
+
+在切换 task runtime 前，用独立 A/B smoke 验证两条 external spherical constraints 确实主动维持闭链：
+
+```bash
+OMNI_KIT_ACCEPT_EULA=YES uv run python scripts/smoke_serialleg_closed_chain.py --headless --device cpu
+OMNI_KIT_ACCEPT_EULA=YES uv run python scripts/smoke_serialleg_closed_chain.py --headless --device cuda:0
+```
+
+该 gate 在同一 stage 中生成两个相同机器人：`Closed` 保持 loop joints 启用，`OpenControl` 只在运行时
+关闭这两条 joints。两者承受相同的成对反向周期外力；验收要求 closed 逐侧 residual `<2e-5 m`、
+open control residual `>1e-3 m`、逐侧 A/B 差异 `>1000x`，且 closed 关节实际运动 `>1e-3 rad`。
+
+在 Isaac Sim GUI 中以 standing 姿态交互查看实体 collision geometry：
+
+```bash
+OMNI_KIT_ACCEPT_EULA=YES uv run python scripts/view_serialleg_collisions.py --device cpu
+```
+
+默认 `--view-mode render` 会关闭 PhysX 绿色线框，在 viewer stage 内从同一份 collision geometry 创建蓝灰色、无物理 API 的
+render-only preview 并添加灯光；预览包括 54 个 mesh 和 2 个 wheel cylinder，每个副本挂在对应的运动刚体下，
+因此会跟随关节动作；不向训练 USD 写入 visual 或增加其磁盘体积。GUI 会同时打开 `SerialLeg Collision + Closed Chain`
+控制面板：
+
+- 4 个 leg policy joint 使用 standing pose 附近的 position-offset 滑块；
+- 2 个 wheel joint 使用 velocity-target 滑块；
+- 4 个 passive closed-chain joints 不直接下命令，面板实时显示它们的实际位置；
+- 两条 loop attachment residual 实时显示，默认阈值为 `2e-4 m`；
+- `Reset standing pose` 硬重置关节状态，`Zero commands` 只将当前命令归零。
+
+viewer 默认固定 base 以方便观察机构；需要查看 floating-base 反作用时使用 `--floating-base`。需要无手动滑块的
+自动闭链动画或 bounded headless gate 时使用：
+
+```bash
+OMNI_KIT_ACCEPT_EULA=YES uv run python scripts/view_serialleg_collisions.py --device cpu --demo-motion
+OMNI_KIT_ACCEPT_EULA=YES uv run python scripts/view_serialleg_collisions.py --headless --device cpu --frames 240 --demo-motion
+```
+
+需要物理调试时可用：
+
+```bash
+OMNI_KIT_ACCEPT_EULA=YES uv run python scripts/view_serialleg_collisions.py --device cpu --view-mode both
+OMNI_KIT_ACCEPT_EULA=YES uv run python scripts/view_serialleg_collisions.py --device cpu --view-mode collision
+```
+
+`both` 表示实体渲染加 PhysX 线框，`collision` 只显示线框。绿色表示 dynamic collider，洋红色表示 static collider，
+深红色表示 PhysX 使用了 fallback geometry；也可在 Eye 菜单中手动切换。
+
+canonical URDF 本身没有 visual。为规避 Isaac importer 的无 visual 悬挂引用，转换器临时给 11 个 link
+各放一个透明 `1e-6 m` sphere；导入后立即屏蔽这些 `visuals` scope，再 flatten。最终 USD 只有 54 个 collision mesh
+和 2 个 wheel cylinder，visual geometry 为 0；viewer 的实体模式显示的正是这些 collision geometry，而不是原始高模 visual。
+
+源 mesh 树也已收敛到这 54 个 collision STL：32 个 base collision、6 个 `sw_collision_v3` 腿部 collision 和
+16 个 `leg_coacd_v1` 四连杆 collision，合计 `359636 bytes`。canonical MJCF、import MJCF 与 URDF 的引用闭包完全一致，
+不再打包旧 surrogate/fidelity 模型、OBJ、高模 visual 或未引用的 collision 分解；直接构建的 wheel 约 `303 KiB`。
+
+当前 USD 约 `522 KiB`，整个 `serialleg/` 资产目录约 `940 KiB`，并由 gate 限制 USD 不超过 `5 MiB`。它通过精确 `.gitignore` / `.gitattributes` 例外作为
+普通 Git 文件随仓库交付，不占用当前不可用的 Git LFS 配额；其他 USD 仍保持原有忽略/LFS 策略。
+
+## 验证任务注册
+
+列出已注册环境：
+
+```bash
+uv run python scripts/list_envs.py
+```
+
+`SerialLeg-Flat-ClosedChain-v0` 当前尚未切换到新 USD；在完成下一阶段运行时接入前，不把 dummy-agent 或训练入口作为通过项。
+
+## 主要目录
+
+```text
+.
+├── pyproject.toml
+├── uv.lock
+├── scripts/
+│   ├── list_envs.py
+│   ├── zero_agent.py
+│   ├── random_agent.py
+│   └── rsl_rl/
+│       ├── train.py
+│       └── play.py
+└── source/
+    └── se3_rl_lab/
+        ├── pyproject.toml
+        └── se3_rl_lab/
+            └── tasks/
+                └── manager_based/
+                    └── se3_rl_lab/
+```
+
+当前官方模板 task 的关键文件：
+
+- `source/se3_rl_lab/se3_rl_lab/tasks/manager_based/se3_rl_lab/__init__.py`
+- `source/se3_rl_lab/se3_rl_lab/tasks/manager_based/se3_rl_lab/se3_rl_lab_env_cfg.py`
+- `source/se3_rl_lab/se3_rl_lab/tasks/manager_based/se3_rl_lab/agents/rsl_rl_ppo_cfg.py`
+- `source/se3_rl_lab/se3_rl_lab/tasks/manager_based/se3_rl_lab/mdp/rewards.py`
+
+## 下一步迁移顺序
+
+建议按小步推进：
+
+1. 将 `SerialLeg-Flat-ClosedChain-v0` 从旧 MJCF custom spawner 切换到预生成的 collision-only USD。
+2. 运行 task-level 单环境 CPU gate，验证 6D actuator、4 个 passive DOF、standing reset、地面接触和 loop residual。
+3. 恢复 fixed-tendon coupled limits、必要 collision filtering 以及 contact/solver 参数。
+4. 实现自定义 6D delayed action term。
+5. 对齐 34D actor observation 和 40D critic observation。
+6. 迁移 flat 奖励、终止条件和 curriculum。
+7. 迁移 RSL-RL PPO/GRU 配置。
+
+## 代码质量
+
+格式化和检查：
+
+```bash
+uv run ruff format .
+uv run ruff check .
+uv run pre-commit run --all-files
+```
+
+## Agent 接力
+
+本仓库启用了多文档 Agent handoff：
+
+- `AGENT_HANDOFF.md`：接力索引
+- `.agent-handoff/snapshot.md`：当前状态
+- `.agent-handoff/workspace.md`：仓库地图
+- `.agent-handoff/backlog.md`：后续任务
+- `.agent-handoff/risks.md`：风险和未知项
+
+新 Agent 接手时，先读 `AGENT_HANDOFF.md`，再按其中的 Recovery Reading Order 读取相关状态文件。
+
+## IDE 设置
+
+如果 VSCode / Pylance 找不到 IsaacLab 或 Omniverse 模块，可以在 `.vscode/settings.json` 中加入额外搜索路径，例如：
+
+```json
+{
+  "python.analysis.extraPaths": [
+    "/home/am345/se3_rl_lab/source/se3_rl_lab",
+    "/home/am345/IsaacLab/source/isaaclab",
+    "/home/am345/IsaacLab/source/isaaclab_assets",
+    "/home/am345/IsaacLab/source/isaaclab_rl",
+    "/home/am345/IsaacLab/source/isaaclab_tasks"
+  ]
+}
+```
+
+如果 Pylance 因索引 Omniverse 包过多而崩溃，可以排除暂时不需要的 extscache 路径。

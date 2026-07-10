@@ -1,0 +1,167 @@
+schema_version = 1
+robot_name = "serialleg_closed_chain_v3_train_obb_trim"
+root_link = "base_link"
+root_height = 0.22
+canonical_urdf = "urdf/serialleg_closed_chain_v3_train_obb_trim.urdf"
+runtime_usd = "usd/serialleg_closed_chain_v3_train_obb_trim.usd"
+links = [
+  "base_link",
+  "lf0_Link",
+  "lf1_Link",
+  "l_wheel_Link",
+  "l_drive_bar_Link",
+  "l_coupler_Link",
+  "rf0_Link",
+  "rf1_Link",
+  "r_wheel_Link",
+  "r_drive_bar_Link",
+  "r_coupler_Link",
+]
+policy_joint_order = [
+  "lf0_Joint",
+  "l_drive_bar_Joint",
+  "rf0_Joint",
+  "r_drive_bar_Joint",
+  "l_wheel_Joint",
+  "r_wheel_Joint",
+]
+
+[usd_importer]
+fix_base = false
+merge_fixed_joints = false
+import_inertia_tensor = true
+make_default_prim = true
+create_physics_scene = false
+self_collision = false
+collision_from_visuals = false
+# Wheel contact geometry must remain a cylinder.
+replace_cylinders_with_capsules = false
+
+[usd_gate]
+expected_total_mass = 12.72874558
+expected_visual_count = 0
+expected_collision_mesh_count = 54
+expected_collision_face_count = 7102
+expected_collision_point_index_count = 21306
+max_collision_only_usd_bytes = 5242880
+
+[actuator_groups.legs]
+joint_names = ["lf0_Joint", "l_drive_bar_Joint", "rf0_Joint", "r_drive_bar_Joint"]
+policy = true
+effort_limit_sim = 40.0
+velocity_limit_sim = 16.755160819145562
+stiffness = 60.0
+damping = 3.0
+action_scale = 40.0
+
+[actuator_groups.wheels]
+joint_names = ["l_wheel_Joint", "r_wheel_Joint"]
+policy = true
+effort_limit_sim = 3.71
+velocity_limit_sim = 71.81
+stiffness = 0.0
+damping = 0.08
+action_scale = 3.71
+
+[actuator_groups.closed_chain_passive]
+joint_names = ["lf1_Joint", "l_coupler_Joint", "rf1_Joint", "r_coupler_Joint"]
+policy = false
+effort_limit_sim = 0.0
+stiffness = 0.0
+damping = 0.0
+
+[tree_joints.lf0_Joint]
+parent = "base_link"
+child = "lf0_Link"
+armature = 0.01
+source_damping = 0.0
+source_friction = 0.0
+default_position = -0.275422946189
+
+[tree_joints.lf1_Joint]
+parent = "lf0_Link"
+child = "lf1_Link"
+armature = 0.02
+source_damping = 1.0
+source_friction = 0.0
+default_position = -1.242259649307
+
+[tree_joints.l_wheel_Joint]
+parent = "lf1_Link"
+child = "l_wheel_Link"
+armature = 0.005
+source_damping = 0.0
+source_friction = 0.0
+default_position = 0.0
+
+[tree_joints.l_drive_bar_Joint]
+parent = "base_link"
+child = "l_drive_bar_Link"
+armature = 0.01
+source_damping = 0.0
+source_friction = 0.0
+default_position = -1.592100148957
+
+[tree_joints.l_coupler_Joint]
+parent = "l_drive_bar_Link"
+child = "l_coupler_Link"
+armature = 0.02
+source_damping = 1.0
+source_friction = 0.0
+default_position = 1.40126634
+
+[tree_joints.rf0_Joint]
+parent = "base_link"
+child = "rf0_Link"
+armature = 0.01
+source_damping = 0.0
+source_friction = 0.0
+default_position = 0.275422946189
+
+[tree_joints.rf1_Joint]
+parent = "rf0_Link"
+child = "rf1_Link"
+armature = 0.02
+source_damping = 1.0
+source_friction = 0.0
+default_position = 1.242259649307
+
+[tree_joints.r_wheel_Joint]
+parent = "rf1_Link"
+child = "r_wheel_Link"
+armature = 0.005
+source_damping = 0.0
+source_friction = 0.0
+default_position = 0.0
+
+[tree_joints.r_drive_bar_Joint]
+parent = "base_link"
+child = "r_drive_bar_Link"
+armature = 0.01
+source_damping = 0.0
+source_friction = 0.0
+default_position = 1.592100148957
+
+[tree_joints.r_coupler_Joint]
+parent = "r_drive_bar_Link"
+child = "r_coupler_Link"
+armature = 0.02
+source_damping = 1.0
+source_friction = 0.0
+default_position = -1.40126941
+
+[[loop_joints]]
+name = "l_coupler_to_lf_calf"
+body0 = "l_coupler_Link"
+local_pos0 = [-0.16999653, 0.0146, 0.00108627]
+body1 = "lf1_Link"
+local_pos1 = [0.05003347, 0.0, 0.04149627]
+armature = 0.005
+
+[[loop_joints]]
+name = "r_coupler_to_rf_calf"
+body0 = "r_coupler_Link"
+local_pos0 = [-0.16999653, -0.0131, 0.00108627]
+body1 = "rf1_Link"
+local_pos1 = [0.05003347, 0.0, 0.04149627]
+armature = 0.005

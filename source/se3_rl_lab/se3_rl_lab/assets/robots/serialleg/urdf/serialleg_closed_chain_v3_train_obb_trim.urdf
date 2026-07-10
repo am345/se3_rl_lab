@@ -1,0 +1,508 @@
+<?xml version='1.0' encoding='utf-8'?>
+<robot name="serialleg_closed_chain_v3_train_obb_trim">
+  <!-- DO NOT EDIT: regenerate with scripts/convert_serialleg_mjcf_to_urdf.py. Canonical source: source/se3_rl_lab/se3_rl_lab/assets/robots/serialleg/mjcf/serialleg_closed_chain_v3_train_obb_trim.xml. Source SHA256: 4edab8e9ee6903e0b821327bf1211024ebe19d862839914ed01e0d9d8fd7e21d. -->
+  <!-- Intentionally deferred MJCF-only semantics: joint armature; fixed-tendon coupled limits; spatial-tendon sites; option timestep/solver/cone; geom/equality solref and solimp; contact masks/friction; standing keyframe; world floor/light and debug display materials. -->
+  <!-- Deferred coupled limits: 0 <= q_lf0_Joint - q_l_drive_bar_Joint <= 1.509535270050; 0 <= q_r_drive_bar_Joint - q_rf0_Joint <= 1.509535270050. -->
+  <!-- The MJCF base_link world/spawn z=0.22 is intentionally not baked into this floating-root URDF. -->
+  <link name="base_link">
+    <inertial>
+      <origin xyz="-0.01780372 0.01307697 -0.03342401" rpy="0 0 0" />
+      <mass value="10.74541262" />
+      <inertia ixx="0.14395729" ixy="-0.00229101" ixz="0.00807199" iyy="0.21248062" iyz="-0.00039793" izz="0.30929562" />
+    </inertial>
+    <collision name="base_link_collision_visual_coacd_00">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../meshes/stair_base_visual_coacd_32/base_visual_coacd_part_00.stl" />
+      </geometry>
+    </collision>
+    <collision name="base_link_collision_visual_coacd_01">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../meshes/stair_base_visual_coacd_32/base_visual_coacd_part_01.stl" />
+      </geometry>
+    </collision>
+    <collision name="base_link_collision_visual_coacd_02">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../meshes/stair_base_visual_coacd_32/base_visual_coacd_part_02.stl" />
+      </geometry>
+    </collision>
+    <collision name="base_link_collision_visual_coacd_03">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../meshes/stair_base_visual_coacd_32/base_visual_coacd_part_03.stl" />
+      </geometry>
+    </collision>
+    <collision name="base_link_collision_visual_coacd_04">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../meshes/stair_base_visual_coacd_32/base_visual_coacd_part_04.stl" />
+      </geometry>
+    </collision>
+    <collision name="base_link_collision_visual_coacd_05">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../meshes/stair_base_visual_coacd_32/base_visual_coacd_part_05.stl" />
+      </geometry>
+    </collision>
+    <collision name="base_link_collision_visual_coacd_06">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../meshes/stair_base_visual_coacd_32/base_visual_coacd_part_06.stl" />
+      </geometry>
+    </collision>
+    <collision name="base_link_collision_visual_coacd_07">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../meshes/stair_base_visual_coacd_32/base_visual_coacd_part_07.stl" />
+      </geometry>
+    </collision>
+    <collision name="base_link_collision_visual_coacd_08">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../meshes/stair_base_visual_coacd_32/base_visual_coacd_part_08.stl" />
+      </geometry>
+    </collision>
+    <collision name="base_link_collision_visual_coacd_09">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../meshes/stair_base_visual_coacd_32/base_visual_coacd_part_09.stl" />
+      </geometry>
+    </collision>
+    <collision name="base_link_collision_visual_coacd_10">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../meshes/stair_base_visual_coacd_32/base_visual_coacd_part_10.stl" />
+      </geometry>
+    </collision>
+    <collision name="base_link_collision_visual_coacd_11">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../meshes/stair_base_visual_coacd_32/base_visual_coacd_part_11.stl" />
+      </geometry>
+    </collision>
+    <collision name="base_link_collision_visual_coacd_12">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../meshes/stair_base_visual_coacd_32/base_visual_coacd_part_12.stl" />
+      </geometry>
+    </collision>
+    <collision name="base_link_collision_visual_coacd_13">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../meshes/stair_base_visual_coacd_32/base_visual_coacd_part_13.stl" />
+      </geometry>
+    </collision>
+    <collision name="base_link_collision_visual_coacd_14">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../meshes/stair_base_visual_coacd_32/base_visual_coacd_part_14.stl" />
+      </geometry>
+    </collision>
+    <collision name="base_link_collision_visual_coacd_15">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../meshes/stair_base_visual_coacd_32/base_visual_coacd_part_15.stl" />
+      </geometry>
+    </collision>
+    <collision name="base_link_collision_visual_coacd_16">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../meshes/stair_base_visual_coacd_32/base_visual_coacd_part_16.stl" />
+      </geometry>
+    </collision>
+    <collision name="base_link_collision_visual_coacd_17">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../meshes/stair_base_visual_coacd_32/base_visual_coacd_part_17.stl" />
+      </geometry>
+    </collision>
+    <collision name="base_link_collision_visual_coacd_18">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../meshes/stair_base_visual_coacd_32/base_visual_coacd_part_18.stl" />
+      </geometry>
+    </collision>
+    <collision name="base_link_collision_visual_coacd_19">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../meshes/stair_base_visual_coacd_32/base_visual_coacd_part_19.stl" />
+      </geometry>
+    </collision>
+    <collision name="base_link_collision_visual_coacd_20">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../meshes/stair_base_visual_coacd_32/base_visual_coacd_part_20.stl" />
+      </geometry>
+    </collision>
+    <collision name="base_link_collision_visual_coacd_21">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../meshes/stair_base_visual_coacd_32/base_visual_coacd_part_21.stl" />
+      </geometry>
+    </collision>
+    <collision name="base_link_collision_visual_coacd_22">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../meshes/stair_base_visual_coacd_32/base_visual_coacd_part_22.stl" />
+      </geometry>
+    </collision>
+    <collision name="base_link_collision_visual_coacd_23">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../meshes/stair_base_visual_coacd_32/base_visual_coacd_part_23.stl" />
+      </geometry>
+    </collision>
+    <collision name="base_link_collision_visual_coacd_24">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../meshes/stair_base_visual_coacd_32/base_visual_coacd_part_24.stl" />
+      </geometry>
+    </collision>
+    <collision name="base_link_collision_visual_coacd_25">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../meshes/stair_base_visual_coacd_32/base_visual_coacd_part_25.stl" />
+      </geometry>
+    </collision>
+    <collision name="base_link_collision_visual_coacd_26">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../meshes/stair_base_visual_coacd_32/base_visual_coacd_part_26.stl" />
+      </geometry>
+    </collision>
+    <collision name="base_link_collision_visual_coacd_27">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../meshes/stair_base_visual_coacd_32/base_visual_coacd_part_27.stl" />
+      </geometry>
+    </collision>
+    <collision name="base_link_collision_visual_coacd_28">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../meshes/stair_base_visual_coacd_32/base_visual_coacd_part_28.stl" />
+      </geometry>
+    </collision>
+    <collision name="base_link_collision_visual_coacd_29">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../meshes/stair_base_visual_coacd_32/base_visual_coacd_part_29.stl" />
+      </geometry>
+    </collision>
+    <collision name="base_link_collision_visual_coacd_30">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../meshes/stair_base_visual_coacd_32/base_visual_coacd_part_30.stl" />
+      </geometry>
+    </collision>
+    <collision name="base_link_collision_visual_coacd_31">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../meshes/stair_base_visual_coacd_32/base_visual_coacd_part_31.stl" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="lf0_Link">
+    <inertial>
+      <origin xyz="-0.09968276 0.00404879 0.00282013" rpy="0 0 0" />
+      <mass value="0.32242010" />
+      <inertia ixx="0.00013496" ixy="7.976e-05" ixz="9.393e-05" iyy="0.00177872" iyz="-2.38e-06" izz="0.00170006" />
+    </inertial>
+    <collision name="lf0_Link_stair_col_00">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../meshes/sw_collision_v3/lf0_Link/lf0_Link_sw_env_00.stl" />
+      </geometry>
+    </collision>
+    <collision name="lf0_Link_stair_col_01">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../meshes/sw_collision_v3/lf0_Link/lf0_Link_sw_env_01.stl" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="lf1_Link">
+    <inertial>
+      <origin xyz="0.00826194 -0.00094144 -0.02420039" rpy="0 0 0" />
+      <mass value="0.32184046" />
+      <inertia ixx="0.00126318" ixy="2.96e-06" ixz="-0.00076497" iyy="0.00185755" iyz="1.136e-05" izz="0.00061944" />
+    </inertial>
+    <collision name="lf1_Link_stair_col_00">
+      <origin xyz="0.05003347 0 0.04149627" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../meshes/sw_collision_v3/lf1_Link/lf1_Link_sw_env_00.stl" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="l_wheel_Link">
+    <inertial>
+      <origin xyz="-7.447e-05 -0.00660229 -8.94e-05" rpy="0 0 0" />
+      <mass value="0.27783378" />
+      <inertia ixx="0.00026503" ixy="-2e-07" ixz="3.1e-07" iyy="0.0004808" iyz="-2.5e-07" izz="0.00026516" />
+    </inertial>
+    <collision name="l_wheel_Link_collision_0">
+      <origin xyz="6.9e-05 -0.0065 -2.9e-05" rpy="1.5708 0 0" />
+      <geometry>
+        <cylinder radius="0.06" length="0.02" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="l_drive_bar_Link">
+    <inertial>
+      <origin xyz="0.01185501 0.01367042 0.01339557" rpy="0 0 0" />
+      <mass value="0.04635322" />
+      <inertia ixx="2.217e-05" ixy="-4e-08" ixz="-1.18e-05" iyy="4.09e-05" iyz="-5e-08" izz="1.928e-05" />
+    </inertial>
+    <collision name="l_drive_bar_Link_coacd_col_00">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../meshes/leg_coacd_v1/l_drive_bar_Link/l_drive_bar_Link_coacd_00.stl" />
+      </geometry>
+    </collision>
+    <collision name="l_drive_bar_Link_coacd_col_01">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../meshes/leg_coacd_v1/l_drive_bar_Link/l_drive_bar_Link_coacd_01.stl" />
+      </geometry>
+    </collision>
+    <collision name="l_drive_bar_Link_coacd_col_02">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../meshes/leg_coacd_v1/l_drive_bar_Link/l_drive_bar_Link_coacd_02.stl" />
+      </geometry>
+    </collision>
+    <collision name="l_drive_bar_Link_coacd_col_03">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../meshes/leg_coacd_v1/l_drive_bar_Link/l_drive_bar_Link_coacd_03.stl" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="l_coupler_Link">
+    <inertial>
+      <origin xyz="-0.08300337 0.00146519 0.01330427" rpy="0 0 0" />
+      <mass value="0.02321892" />
+      <inertia ixx="2.49e-06" ixy="3.2e-07" ixz="-1.25e-06" iyy="7.107e-05" iyz="-7e-08" izz="6.893e-05" />
+    </inertial>
+    <collision name="l_coupler_Link_coacd_col_00">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../meshes/leg_coacd_v1/l_coupler_Link/l_coupler_Link_coacd_00.stl" />
+      </geometry>
+    </collision>
+    <collision name="l_coupler_Link_coacd_col_01">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../meshes/leg_coacd_v1/l_coupler_Link/l_coupler_Link_coacd_01.stl" />
+      </geometry>
+    </collision>
+    <collision name="l_coupler_Link_coacd_col_02">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../meshes/leg_coacd_v1/l_coupler_Link/l_coupler_Link_coacd_02.stl" />
+      </geometry>
+    </collision>
+    <collision name="l_coupler_Link_coacd_col_03">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../meshes/leg_coacd_v1/l_coupler_Link/l_coupler_Link_coacd_03.stl" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="rf0_Link">
+    <inertial>
+      <origin xyz="-0.09968276 -0.00404879 0.00282013" rpy="0 0 0" />
+      <mass value="0.32242010" />
+      <inertia ixx="0.00013496" ixy="-7.976e-05" ixz="9.393e-05" iyy="0.00177872" iyz="2.38e-06" izz="0.00170006" />
+    </inertial>
+    <collision name="rf0_Link_stair_col_00">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../meshes/sw_collision_v3/rf0_Link/rf0_Link_sw_env_00.stl" />
+      </geometry>
+    </collision>
+    <collision name="rf0_Link_stair_col_01">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../meshes/sw_collision_v3/rf0_Link/rf0_Link_sw_env_01.stl" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="rf1_Link">
+    <inertial>
+      <origin xyz="0.00826194 0.00094144 -0.02420039" rpy="0 0 0" />
+      <mass value="0.32184046" />
+      <inertia ixx="0.00126318" ixy="-2.96e-06" ixz="-0.00076497" iyy="0.00185755" iyz="-1.136e-05" izz="0.00061944" />
+    </inertial>
+    <collision name="rf1_Link_stair_col_00">
+      <origin xyz="0.05003347 0 0.04149627" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../meshes/sw_collision_v3/rf1_Link/rf1_Link_sw_env_00.stl" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="r_wheel_Link">
+    <inertial>
+      <origin xyz="-7.447e-05 0.00660229 -8.94e-05" rpy="0 0 0" />
+      <mass value="0.27783378" />
+      <inertia ixx="0.00026503" ixy="2e-07" ixz="3.1e-07" iyy="0.0004808" iyz="2.5e-07" izz="0.00026516" />
+    </inertial>
+    <collision name="r_wheel_Link_collision_0">
+      <origin xyz="-6.9e-05 0.0065 2.9e-05" rpy="1.5708 0 0" />
+      <geometry>
+        <cylinder radius="0.06" length="0.02" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="r_drive_bar_Link">
+    <inertial>
+      <origin xyz="0.01185501 -0.01367042 0.01339557" rpy="0 0 0" />
+      <mass value="0.04635322" />
+      <inertia ixx="2.217e-05" ixy="4e-08" ixz="-1.18e-05" iyy="4.09e-05" iyz="5e-08" izz="1.928e-05" />
+    </inertial>
+    <collision name="r_drive_bar_Link_coacd_col_00">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../meshes/leg_coacd_v1/r_drive_bar_Link/r_drive_bar_Link_coacd_00.stl" />
+      </geometry>
+    </collision>
+    <collision name="r_drive_bar_Link_coacd_col_01">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../meshes/leg_coacd_v1/r_drive_bar_Link/r_drive_bar_Link_coacd_01.stl" />
+      </geometry>
+    </collision>
+    <collision name="r_drive_bar_Link_coacd_col_02">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../meshes/leg_coacd_v1/r_drive_bar_Link/r_drive_bar_Link_coacd_02.stl" />
+      </geometry>
+    </collision>
+    <collision name="r_drive_bar_Link_coacd_col_03">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../meshes/leg_coacd_v1/r_drive_bar_Link/r_drive_bar_Link_coacd_03.stl" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="r_coupler_Link">
+    <inertial>
+      <origin xyz="-0.08300337 -0.00146519 0.01330427" rpy="0 0 0" />
+      <mass value="0.02321892" />
+      <inertia ixx="2.49e-06" ixy="-3.2e-07" ixz="-1.25e-06" iyy="7.107e-05" iyz="7e-08" izz="6.893e-05" />
+    </inertial>
+    <collision name="r_coupler_Link_coacd_col_00">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../meshes/leg_coacd_v1/r_coupler_Link/r_coupler_Link_coacd_00.stl" />
+      </geometry>
+    </collision>
+    <collision name="r_coupler_Link_coacd_col_01">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../meshes/leg_coacd_v1/r_coupler_Link/r_coupler_Link_coacd_01.stl" />
+      </geometry>
+    </collision>
+    <collision name="r_coupler_Link_coacd_col_02">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../meshes/leg_coacd_v1/r_coupler_Link/r_coupler_Link_coacd_02.stl" />
+      </geometry>
+    </collision>
+    <collision name="r_coupler_Link_coacd_col_03">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="../meshes/leg_coacd_v1/r_coupler_Link/r_coupler_Link_coacd_03.stl" />
+      </geometry>
+    </collision>
+  </link>
+  <!-- Source MJCF metadata for lf0_Joint: armature=0.01; armature requires USD post-processing. -->
+  <joint name="lf0_Joint" type="continuous">
+    <origin xyz="0 0.16885 0" rpy="0 0 0" />
+    <parent link="base_link" />
+    <child link="lf0_Link" />
+    <axis xyz="0 1 0" />
+    <dynamics damping="0" friction="0" />
+  </joint>
+  <!-- Source MJCF metadata for lf1_Joint: armature=0.02; armature requires USD post-processing. -->
+  <joint name="lf1_Joint" type="continuous">
+    <origin xyz="-0.17993464 0.0215 0.00489576" rpy="0 0 0" />
+    <parent link="lf0_Link" />
+    <child link="lf1_Link" />
+    <axis xyz="0 1 0" />
+    <dynamics damping="1" friction="0" />
+  </joint>
+  <!-- Source MJCF metadata for l_wheel_Joint: armature=0.005; armature requires USD post-processing. -->
+  <joint name="l_wheel_Joint" type="continuous">
+    <origin xyz="-0.10695653 0.02705 -0.16899373" rpy="0 0 0" />
+    <parent link="lf1_Link" />
+    <child link="l_wheel_Link" />
+    <axis xyz="0 1 0" />
+    <dynamics damping="0" friction="0" />
+  </joint>
+  <!-- Source MJCF metadata for l_drive_bar_Joint: armature=0.01; armature requires USD post-processing. -->
+  <joint name="l_drive_bar_Joint" type="continuous">
+    <origin xyz="0 0.16885 0" rpy="0 0 0" />
+    <parent link="base_link" />
+    <child link="l_drive_bar_Link" />
+    <axis xyz="0 1 0" />
+    <dynamics damping="0" friction="0" />
+  </joint>
+  <!-- Source MJCF metadata for l_coupler_Joint: armature=0.02; armature requires USD post-processing. -->
+  <joint name="l_coupler_Joint" type="continuous">
+    <origin xyz="0.04009536 0.0069 0.04530576" rpy="0 0 0" />
+    <parent link="l_drive_bar_Link" />
+    <child link="l_coupler_Link" />
+    <axis xyz="0 1 0" />
+    <dynamics damping="1" friction="0" />
+  </joint>
+  <!-- Source MJCF metadata for rf0_Joint: armature=0.01; armature requires USD post-processing. -->
+  <joint name="rf0_Joint" type="continuous">
+    <origin xyz="0 -0.16885 0" rpy="0 0 0" />
+    <parent link="base_link" />
+    <child link="rf0_Link" />
+    <axis xyz="0 -1 0" />
+    <dynamics damping="0" friction="0" />
+  </joint>
+  <!-- Source MJCF metadata for rf1_Joint: armature=0.02; armature requires USD post-processing. -->
+  <joint name="rf1_Joint" type="continuous">
+    <origin xyz="-0.179935 -0.02 0.004896" rpy="0 0 0" />
+    <parent link="rf0_Link" />
+    <child link="rf1_Link" />
+    <axis xyz="0 -1 0" />
+    <dynamics damping="1" friction="0" />
+  </joint>
+  <!-- Source MJCF metadata for r_wheel_Joint: armature=0.005; armature requires USD post-processing. -->
+  <joint name="r_wheel_Joint" type="continuous">
+    <origin xyz="-0.10695653 -0.02705 -0.16899373" rpy="0 0 0" />
+    <parent link="rf1_Link" />
+    <child link="r_wheel_Link" />
+    <axis xyz="0 -1 0" />
+    <dynamics damping="0" friction="0" />
+  </joint>
+  <!-- Source MJCF metadata for r_drive_bar_Joint: armature=0.01; armature requires USD post-processing. -->
+  <joint name="r_drive_bar_Joint" type="continuous">
+    <origin xyz="0 -0.16885 0" rpy="0 0 0" />
+    <parent link="base_link" />
+    <child link="r_drive_bar_Link" />
+    <axis xyz="0 -1 0" />
+    <dynamics damping="0" friction="0" />
+  </joint>
+  <!-- Source MJCF metadata for r_coupler_Joint: armature=0.02; armature requires USD post-processing. -->
+  <joint name="r_coupler_Joint" type="continuous">
+    <origin xyz="0.040095 -0.0069 0.045306" rpy="0 0 0" />
+    <parent link="r_drive_bar_Link" />
+    <child link="r_coupler_Link" />
+    <axis xyz="0 -1 0" />
+    <dynamics damping="1" friction="0" />
+  </joint>
+  <loop_joint name="l_coupler_to_lf_calf" type="spherical">
+    <link1 link="l_coupler_Link" rpy="0 0 0" xyz="-0.16999653 0.0146 0.00108627" />
+    <link2 link="lf1_Link" rpy="0 0 0" xyz="0.05003347 0 0.04149627" />
+  </loop_joint>
+  <loop_joint name="r_coupler_to_rf_calf" type="spherical">
+    <link1 link="r_coupler_Link" rpy="0 0 0" xyz="-0.16999653 -0.0131 0.00108627" />
+    <link2 link="rf1_Link" rpy="0 0 0" xyz="0.05003347 0 0.04149627" />
+  </loop_joint>
+</robot>
