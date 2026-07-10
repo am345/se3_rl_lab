@@ -2,7 +2,7 @@
 *.usda filter=lfs diff=lfs merge=lfs -text
 # This collision-only runtime USD is a small, regenerable exception to the
 # repository-wide LFS rule; the remote LFS quota is currently unavailable.
-source/se3_rl_lab/se3_rl_lab/assets/robots/serialleg/usd/serialleg_closed_chain_v3_train_obb_trim.usd -filter -diff -merge -text
+source/se3_rl_lab/se3_rl_lab/assets/robots/serialleg/usd/serialleg_closed_chain_complex_collision.usd -filter -diff -merge -text
 *.psd filter=lfs diff=lfs merge=lfs -text
 *.hdr filter=lfs diff=lfs merge=lfs -text
 *.dae filter=lfs diff=lfs merge=lfs -text

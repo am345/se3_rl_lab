@@ -19,9 +19,9 @@ from .serialleg_contract import SERIALLEG_CONTRACT
 enable_extension("isaacsim.asset.importer.mjcf")
 
 SERIALLEG_ASSET_DIR = Path(__file__).resolve().parent / "serialleg"
-SERIALLEG_ORIGINAL_CLOSED_CHAIN_MJCF = SERIALLEG_ASSET_DIR / "mjcf" / "serialleg_closed_chain_v3_train_obb_trim.xml"
+SERIALLEG_ORIGINAL_CLOSED_CHAIN_MJCF = SERIALLEG_ASSET_DIR / "mjcf" / "serialleg_closed_chain_complex_collision.xml"
 SERIALLEG_CLOSED_CHAIN_MJCF = (
-    SERIALLEG_ASSET_DIR / "mjcf" / "serialleg_closed_chain_v3_train_obb_trim_isaaclab_import.xml"
+    SERIALLEG_ASSET_DIR / "mjcf" / "serialleg_closed_chain_complex_collision_isaaclab_import.xml"
 )
 
 SERIALLEG_POLICY_LEG_JOINTS = SERIALLEG_CONTRACT.actuator_groups["legs"].joint_names

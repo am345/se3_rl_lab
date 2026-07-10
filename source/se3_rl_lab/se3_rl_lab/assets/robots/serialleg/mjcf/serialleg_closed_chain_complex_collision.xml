@@ -1,9 +1,14 @@
-<mujoco model="serialleg_closed_chain_v3_train_obb_trim">
+<mujoco model="serialleg_closed_chain_complex_collision">
   <compiler angle="radian" meshdir="../meshes" autolimits="true" strippath="false" />
   <option timestep="0.002" solver="Newton" cone="pyramidal" />
   <visual>
     <global offwidth="1280" offheight="720" />
   </visual>
+  <default>
+    <geom solref="0.010 1.5" solimp="0.85 0.99 0.005" />
+    <joint damping="0" />
+    <equality solref="0.010 1.05" solimp="0.2 0.95 0.002 0.9 6" />
+  </default>
   <asset>
     <texture name="grid" type="2d" builtin="checker" width="512" height="512" rgb1=".1 .2 .3" rgb2=".2 .3 .4" />
     <material name="grid" texture="grid" texrepeat="1 1" texuniform="true" reflectance=".2" />
@@ -63,6 +68,8 @@
     <mesh name="legcoacd_r_coupler_Link_03" file="leg_coacd_v1/r_coupler_Link/r_coupler_Link_coacd_03.stl" />
   </asset>
   <worldbody>
+    <geom name="floor" type="plane" size="0 0 .05" material="grid" friction="0.8 0.005 0.0001" contype="2" conaffinity="1" />
+    <light name="spotlight" mode="targetbodycom" target="base_link" diffuse=".8 .8 .8" specular="0.3 0.3 0.3" pos="0 -6 4" cutoff="30" />
     <body name="base_link" pos="0 0 0.22">
       <freejoint />
       <inertial pos="-0.01780372 0.01307697 -0.03342401" mass="10.74541262" fullinertia="0.14395729 0.21248062 0.30929562 -0.00229101 0.00807199 -0.00039793" />
@@ -101,11 +108,16 @@
       <body name="lf0_Link" pos="0 0.16885 0">
         <joint name="lf0_Joint" type="hinge" axis="0 1 0" armature="0.01" />
         <inertial pos="-0.09968276 0.00404879 0.00282013" mass="0.32242010" fullinertia="0.00013496 0.00177872 0.00170006 0.00007976 0.00009393 -0.00000238" />
+        <site name="lf_thigh_end" pos="-0.17993464 0.0215 0.00489576" size="0.008" rgba="1 0 0 1" />
+        <site name="l_spring_p1" pos="0.00705 0.00497702 -0.04678497" group="4" />
         <geom name="lf0_Link_stair_col_00" mesh="staircol_lf0_Link_00" type="mesh" group="0" contype="1" conaffinity="2" />
         <geom name="lf0_Link_stair_col_01" mesh="staircol_lf0_Link_01" type="mesh" group="0" contype="1" conaffinity="2" />
         <body name="lf1_Link" pos="-0.12990117 0.0215 0.04639203">
           <joint name="lf1_Joint" type="hinge" pos="-0.05003347 0 -0.04149627" axis="0 1 0" damping="1" armature="0.02" />
           <inertial pos="-0.04177153 -0.00094144 -0.06569666" mass="0.32184046" fullinertia="0.00126318 0.00185755 0.00061944 0.00000296 -0.00076497 0.00001136" />
+          <site name="lf_calf_closure" pos="-0.05003347 0 -0.04149627" size="0.008" rgba="0 1 0 1" />
+          <site name="lf_coupler_closure" pos="0 0 0" size="0.008" rgba="0 0.7 1 1" />
+          <site name="l_spring_p2" pos="-0.09034883 -0.01652298 -0.09317700" group="4" />
           <geom name="lf1_Link_stair_col_00" mesh="staircol_lf1_Link_00" type="mesh" group="0" contype="1" conaffinity="2" />
           <body name="l_wheel_Link" pos="-0.15699 0.02705 -0.21049">
             <joint name="l_wheel_Joint" type="hinge" axis="0 1 0" armature="0.005" />
@@ -124,6 +136,7 @@
         <body name="l_coupler_Link" pos="0.04009536 0.00690000 0.04530576">
           <joint name="l_coupler_Joint" type="hinge" axis="0 1 0" damping="1" armature="0.02" />
           <inertial pos="-0.08300337 0.00146519 0.01330427" mass="0.02321892" fullinertia="0.00000249 0.00007107 0.00006893 0.00000032 -0.00000125 -0.00000007" />
+          <site name="l_coupler_end" pos="-0.16999653 0.0146 0.00108627" size="0.008" rgba="1 0.5 0 1" />
           <geom name="l_coupler_Link_coacd_col_00" mesh="legcoacd_l_coupler_Link_00" type="mesh" group="0" contype="1" conaffinity="2" />
           <geom name="l_coupler_Link_coacd_col_01" mesh="legcoacd_l_coupler_Link_01" type="mesh" group="0" contype="1" conaffinity="2" />
           <geom name="l_coupler_Link_coacd_col_02" mesh="legcoacd_l_coupler_Link_02" type="mesh" group="0" contype="1" conaffinity="2" />
@@ -133,11 +146,16 @@
       <body name="rf0_Link" pos="0 -0.16885 0">
         <joint name="rf0_Joint" type="hinge" axis="0 -1 0" armature="0.01" />
         <inertial pos="-0.09968276 -0.00404879 0.00282013" mass="0.32242010" fullinertia="0.00013496 0.00177872 0.00170006 -0.00007976 0.00009393 0.00000238" />
+        <site name="rf_thigh_end" pos="-0.179935 -0.0200 0.004896" size="0.008" rgba="1 0 0 1" />
+        <site name="r_spring_p1" pos="0.00705 -0.00497702 -0.04678497" group="4" />
         <geom name="rf0_Link_stair_col_00" mesh="staircol_rf0_Link_00" type="mesh" group="0" contype="1" conaffinity="2" />
         <geom name="rf0_Link_stair_col_01" mesh="staircol_rf0_Link_01" type="mesh" group="0" contype="1" conaffinity="2" />
         <body name="rf1_Link" pos="-0.12990153 -0.0200 0.04639227">
           <joint name="rf1_Joint" type="hinge" pos="-0.05003347 0 -0.04149627" axis="0 -1 0" damping="1" armature="0.02" />
           <inertial pos="-0.04177153 0.00094144 -0.06569666" mass="0.32184046" fullinertia="0.00126318 0.00185755 0.00061944 -0.00000296 -0.00076497 -0.00001136" />
+          <site name="rf_calf_closure" pos="-0.05003347 0 -0.04149627" size="0.008" rgba="0 1 0 1" />
+          <site name="rf_coupler_closure" pos="0 0 0" size="0.008" rgba="0 0.7 1 1" />
+          <site name="r_spring_p2" pos="-0.09034883 0.01502298 -0.09317700" group="4" />
           <geom name="rf1_Link_stair_col_00" mesh="staircol_rf1_Link_00" type="mesh" group="0" contype="1" conaffinity="2" />
           <body name="r_wheel_Link" pos="-0.15699 -0.02705 -0.21049">
             <joint name="r_wheel_Joint" type="hinge" axis="0 -1 0" armature="0.005" />
@@ -156,6 +174,7 @@
         <body name="r_coupler_Link" pos="0.040095 -0.0069 0.045306">
           <joint name="r_coupler_Joint" type="hinge" axis="0 -1 0" damping="1" armature="0.02" />
           <inertial pos="-0.08300337 -0.00146519 0.01330427" mass="0.02321892" fullinertia="0.00000249 0.00007107 0.00006893 -0.00000032 -0.00000125 0.00000007" />
+          <site name="r_coupler_end" pos="-0.16999653 -0.0131 0.00108627" size="0.008" rgba="1 0.5 0 1" />
           <geom name="r_coupler_Link_coacd_col_00" mesh="legcoacd_r_coupler_Link_00" type="mesh" group="0" contype="1" conaffinity="2" />
           <geom name="r_coupler_Link_coacd_col_01" mesh="legcoacd_r_coupler_Link_01" type="mesh" group="0" contype="1" conaffinity="2" />
           <geom name="r_coupler_Link_coacd_col_02" mesh="legcoacd_r_coupler_Link_02" type="mesh" group="0" contype="1" conaffinity="2" />
@@ -164,6 +183,28 @@
       </body>
     </body>
   </worldbody>
+  <equality>
+    <connect name="l_coupler_to_lf_calf" site1="l_coupler_end" site2="lf_coupler_closure" />
+    <connect name="r_coupler_to_rf_calf" site1="r_coupler_end" site2="rf_coupler_closure" />
+  </equality>
+  <tendon>
+    <fixed name="l_active_rod_angle" limited="true" range="0 1.509535270050" solreflimit="0.010 1" solimplimit="0.99 0.999 0.00001 0.5 2">
+      <joint joint="lf0_Joint" coef="1" />
+      <joint joint="l_drive_bar_Joint" coef="-1" />
+    </fixed>
+    <fixed name="r_active_rod_angle" limited="true" range="0 1.509535270050" solreflimit="0.010 1" solimplimit="0.99 0.999 0.00001 0.5 2">
+      <joint joint="r_drive_bar_Joint" coef="1" />
+      <joint joint="rf0_Joint" coef="-1" />
+    </fixed>
+    <spatial name="l_knee_spring" width="0.003" rgba="0.2 0.6 1 1">
+      <site site="l_spring_p1" />
+      <site site="l_spring_p2" />
+    </spatial>
+    <spatial name="r_knee_spring" width="0.003" rgba="0.2 0.6 1 1">
+      <site site="r_spring_p1" />
+      <site site="r_spring_p2" />
+    </spatial>
+  </tendon>
   <!-- 默认训练模型不启用气弹簧常力，只保留挂点和 tendon 几何。 -->
   <keyframe>
     <key name="standing" qpos="0 0 0.22 1 0 0 0 -0.275422946189 -1.242259649307 0 -1.592100148957 1.401266340000 0.275422946189 1.242259649307 0 1.592100148957 -1.401269410000" />
