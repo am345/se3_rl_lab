@@ -21,11 +21,11 @@ override-dependencies = [
 ]
 
 [tool.uv.sources]
-isaaclab = { path = "/home/am345/IsaacLab/source/isaaclab", editable = true }
-isaaclab-assets = { path = "/home/am345/IsaacLab/source/isaaclab_assets", editable = true }
-isaaclab-mimic = { path = "/home/am345/IsaacLab/source/isaaclab_mimic", editable = true }
-isaaclab-rl = { path = "/home/am345/IsaacLab/source/isaaclab_rl", editable = true }
-isaaclab-tasks = { path = "/home/am345/IsaacLab/source/isaaclab_tasks", editable = true }
+isaaclab = { path = "../IsaacLab/source/isaaclab", editable = true }
+isaaclab-assets = { path = "../IsaacLab/source/isaaclab_assets", editable = true }
+isaaclab-mimic = { path = "../IsaacLab/source/isaaclab_mimic", editable = true }
+isaaclab-rl = { path = "../IsaacLab/source/isaaclab_rl", editable = true }
+isaaclab-tasks = { path = "../IsaacLab/source/isaaclab_tasks", editable = true }
 se3-rl-lab = { workspace = true }
 torch = { index = "pytorch-cu128" }
 torchvision = { index = "pytorch-cu128" }

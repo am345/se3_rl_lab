@@ -78,8 +78,3 @@ tests/
 # TacSL sensor
 **/tactile_record/*
 **/gelsight_r15_data/*
-
-# Agent handoff local memory
-AGENT_HANDOFF.md
-AGENT_SESSION_PROMPTS.md
-.agent-handoff/
