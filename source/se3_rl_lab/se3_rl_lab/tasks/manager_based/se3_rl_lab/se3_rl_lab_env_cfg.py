@@ -10,15 +10,17 @@ from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
 from isaaclab.managers import ObservationTermCfg as ObsTerm
 from isaaclab.managers import RewardTermCfg as RewTerm
+from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.sensors import ContactSensorCfg
 from isaaclab.utils import configclass
+from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
 from se3_rl_lab.assets.robots.serialleg import (
     SERIALLEG_CLOSED_CHAIN_CFG,
-    SERIALLEG_POLICY_ACTION_SCALE,
-    SERIALLEG_POLICY_JOINTS,
+    SERIALLEG_POLICY_LEG_JOINTS,
+    SERIALLEG_WHEEL_JOINTS,
 )
 
 from . import mdp
@@ -64,32 +66,86 @@ class Se3RlLabSceneCfg(InteractiveSceneCfg):
 class ActionsCfg:
     """Action specifications for the MDP."""
 
-    joint_effort = mdp.JointEffortActionCfg(
+    serialleg_delayed = mdp.SerialLegDelayedActionCfg(
         asset_name="robot",
-        joint_names=list(SERIALLEG_POLICY_JOINTS),
-        scale=SERIALLEG_POLICY_ACTION_SCALE,
-        preserve_order=True,
     )
 
 
 @configclass
 class ObservationsCfg:
-    """Observation specifications for the MDP."""
+    """Legacy-compatible 34D actor and 40D privileged-critic observations."""
 
     @configclass
-    class PolicyCfg(ObsGroup):
-        """Observations for policy group."""
+    class ActorCfg(ObsGroup):
+        """34D actor observations in checkpoint/deployment order."""
 
-        # observation terms (order preserved)
-        joint_pos_rel = ObsTerm(func=mdp.joint_pos_rel)
-        joint_vel_rel = ObsTerm(func=mdp.joint_vel_rel)
+        base_ang_vel = ObsTerm(
+            func=mdp.base_ang_vel_obs,
+            params={"asset_cfg": SceneEntityCfg("robot")},
+            noise=Unoise(n_min=-0.2, n_max=0.2),
+        )
+        projected_gravity = ObsTerm(
+            func=mdp.projected_gravity_obs,
+            params={"asset_cfg": SceneEntityCfg("robot")},
+            noise=Unoise(n_min=-0.05, n_max=0.05),
+        )
+        commands = ObsTerm(func=mdp.commands_obs, params={"asset_cfg": SceneEntityCfg("robot")})
+        leg_joint_pos = ObsTerm(
+            func=mdp.leg_joint_pos_obs,
+            params={
+                "asset_cfg": SceneEntityCfg("robot", joint_names=list(SERIALLEG_POLICY_LEG_JOINTS), preserve_order=True)
+            },
+            noise=Unoise(n_min=-0.01, n_max=0.01),
+        )
+        leg_joint_vel = ObsTerm(
+            func=mdp.leg_joint_vel_obs,
+            params={
+                "asset_cfg": SceneEntityCfg("robot", joint_names=list(SERIALLEG_POLICY_LEG_JOINTS), preserve_order=True)
+            },
+            noise=Unoise(n_min=-1.5, n_max=1.5),
+        )
+        wheel_pos_zero = ObsTerm(
+            func=mdp.wheel_pos_obs,
+            params={
+                "asset_cfg": SceneEntityCfg("robot", joint_names=list(SERIALLEG_WHEEL_JOINTS), preserve_order=True)
+            },
+        )
+        wheel_vel = ObsTerm(
+            func=mdp.wheel_vel_obs,
+            params={
+                "asset_cfg": SceneEntityCfg("robot", joint_names=list(SERIALLEG_WHEEL_JOINTS), preserve_order=True)
+            },
+        )
+        last_actions = ObsTerm(func=mdp.last_actions_obs)
+        jump_commands = ObsTerm(func=mdp.jump_commands_obs, params={"asset_cfg": SceneEntityCfg("robot")})
+
+        def __post_init__(self) -> None:
+            self.enable_corruption = True
+            self.concatenate_terms = True
+
+    @configclass
+    class CriticCfg(ActorCfg):
+        """Actor observations followed by 6D privileged state (40D total)."""
+
+        base_lin_vel = ObsTerm(func=mdp.base_lin_vel_obs, params={"asset_cfg": SceneEntityCfg("robot")})
+        wheel_contact_forces = ObsTerm(
+            func=mdp.wheel_contact_force_obs,
+            params={
+                "sensor_cfg": SceneEntityCfg(
+                    "contact_forces",
+                    body_names=["l_wheel_Link", "r_wheel_Link"],
+                    preserve_order=True,
+                )
+            },
+        )
+        base_height = ObsTerm(func=mdp.flat_base_height_obs, params={"asset_cfg": SceneEntityCfg("robot")})
 
         def __post_init__(self) -> None:
             self.enable_corruption = False
             self.concatenate_terms = True
 
-    # observation groups
-    policy: PolicyCfg = PolicyCfg()
+    actor: ActorCfg = ActorCfg()
+    critic: CriticCfg = CriticCfg()
 
 
 @configclass
