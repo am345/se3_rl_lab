@@ -1,14 +1,14 @@
 <?xml version='1.0' encoding='utf-8'?>
 <robot name="serialleg_closed_chain_complex_collision">
   <!-- DO NOT EDIT: regenerate with scripts/convert_serialleg_mjcf_to_urdf.py. Canonical source: source/se3_rl_lab/se3_rl_lab/assets/robots/serialleg/mjcf/serialleg_closed_chain_complex_collision.xml. Source SHA256: 062ed893db2aa857309385e69c26ea85833917758dcde4da4a0c364e761734f2. -->
-  <!-- Intentionally deferred MJCF-only semantics: joint armature; fixed-tendon coupled limits; spatial-tendon sites; option timestep/solver/cone; geom/equality solref and solimp; contact masks/friction; standing keyframe; world floor/light and debug display materials. -->
+  <!-- Intentionally deferred MJCF-only semantics: joint armature; PhysX fixed-tendon schemas; spatial-tendon sites; option timestep/solver/cone; geom/equality solref and solimp; contact masks/friction; standing keyframe; world floor/light and debug display materials. -->
   <!-- Deferred coupled limits: 0 <= q_lf0_Joint - q_l_drive_bar_Joint <= 1.509535270050; 0 <= q_r_drive_bar_Joint - q_rf0_Joint <= 1.509535270050. -->
   <!-- The MJCF base_link world/spawn z=0.22 is intentionally not baked into this floating-root URDF. -->
   <link name="base_link">
     <inertial>
-      <origin xyz="-0.01780372 0.01307697 -0.03342401" rpy="0 0 0" />
-      <mass value="10.74541262" />
-      <inertia ixx="0.14395729" ixy="-0.00229101" ixz="0.00807199" iyy="0.21248062" iyz="-0.00039793" izz="0.30929562" />
+      <origin xyz="-0.0178040513795758 0.0130772134008607 -0.0334246321190996" rpy="0 0 0" />
+      <mass value="10.74521262" />
+      <inertia ixx="0.143956832360887" ixy="-0.00229105656460915" ixz="0.00807210901655827" iyy="0.212480133167283" iyz="-0.000398017418582297" izz="0.309295322402265" />
     </inertial>
     <collision name="base_link_collision_visual_coacd_00">
       <origin xyz="0 0 0" rpy="0 0 0" />
@@ -206,7 +206,7 @@
   <link name="lf0_Link">
     <inertial>
       <origin xyz="-0.09968276 0.00404879 0.00282013" rpy="0 0 0" />
-      <mass value="0.32242010" />
+      <mass value="0.3224201" />
       <inertia ixx="0.00013496" ixy="7.976e-05" ixz="9.393e-05" iyy="0.00177872" iyz="-2.38e-06" izz="0.00170006" />
     </inertial>
     <collision name="lf0_Link_stair_col_00">
@@ -313,7 +313,7 @@
   <link name="rf0_Link">
     <inertial>
       <origin xyz="-0.09968276 -0.00404879 0.00282013" rpy="0 0 0" />
-      <mass value="0.32242010" />
+      <mass value="0.3224201" />
       <inertia ixx="0.00013496" ixy="-7.976e-05" ixz="9.393e-05" iyy="0.00177872" iyz="2.38e-06" izz="0.00170006" />
     </inertial>
     <collision name="rf0_Link_stair_col_00">
@@ -417,10 +417,42 @@
       </geometry>
     </collision>
   </link>
+  <link name="l_tendon_mount_Link">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <mass value="0.0001" />
+      <inertia ixx="1e-07" ixy="0" ixz="0" iyy="1e-07" iyz="0" izz="1e-07" />
+    </inertial>
+  </link>
+  <link name="r_tendon_mount_Link">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <mass value="0.0001" />
+      <inertia ixx="1e-07" ixy="0" ixz="0" iyy="1e-07" iyz="0" izz="1e-07" />
+    </inertial>
+  </link>
+  <!-- Virtual root for future PhysX fixed tendon l_active_rod_angle: planned root gearing=0 and forceCoefficient=0; narrow non-locked range is intentional. -->
+  <joint name="l_tendon_root_Joint" type="revolute">
+    <origin xyz="0 0 0" rpy="0 0 0" />
+    <parent link="base_link" />
+    <child link="l_tendon_mount_Link" />
+    <axis xyz="0 1 0" />
+    <limit lower="-0.0001" upper="0.0001" effort="40" velocity="0.1" />
+    <dynamics damping="10" friction="0" />
+  </joint>
+  <!-- Virtual root for future PhysX fixed tendon r_active_rod_angle: planned root gearing=0 and forceCoefficient=0; narrow non-locked range is intentional. -->
+  <joint name="r_tendon_root_Joint" type="revolute">
+    <origin xyz="0 0 0" rpy="0 0 0" />
+    <parent link="base_link" />
+    <child link="r_tendon_mount_Link" />
+    <axis xyz="0 -1 0" />
+    <limit lower="-0.0001" upper="0.0001" effort="40" velocity="0.1" />
+    <dynamics damping="10" friction="0" />
+  </joint>
   <!-- Source MJCF metadata for lf0_Joint: armature=0.01; armature requires USD post-processing. -->
   <joint name="lf0_Joint" type="continuous">
     <origin xyz="0 0.16885 0" rpy="0 0 0" />
-    <parent link="base_link" />
+    <parent link="l_tendon_mount_Link" />
     <child link="lf0_Link" />
     <axis xyz="0 1 0" />
     <dynamics damping="0" friction="0" />
@@ -444,7 +476,7 @@
   <!-- Source MJCF metadata for l_drive_bar_Joint: armature=0.01; armature requires USD post-processing. -->
   <joint name="l_drive_bar_Joint" type="continuous">
     <origin xyz="0 0.16885 0" rpy="0 0 0" />
-    <parent link="base_link" />
+    <parent link="l_tendon_mount_Link" />
     <child link="l_drive_bar_Link" />
     <axis xyz="0 1 0" />
     <dynamics damping="0" friction="0" />
@@ -460,7 +492,7 @@
   <!-- Source MJCF metadata for rf0_Joint: armature=0.01; armature requires USD post-processing. -->
   <joint name="rf0_Joint" type="continuous">
     <origin xyz="0 -0.16885 0" rpy="0 0 0" />
-    <parent link="base_link" />
+    <parent link="r_tendon_mount_Link" />
     <child link="rf0_Link" />
     <axis xyz="0 -1 0" />
     <dynamics damping="0" friction="0" />
@@ -484,7 +516,7 @@
   <!-- Source MJCF metadata for r_drive_bar_Joint: armature=0.01; armature requires USD post-processing. -->
   <joint name="r_drive_bar_Joint" type="continuous">
     <origin xyz="0 -0.16885 0" rpy="0 0 0" />
-    <parent link="base_link" />
+    <parent link="r_tendon_mount_Link" />
     <child link="r_drive_bar_Link" />
     <axis xyz="0 -1 0" />
     <dynamics damping="0" friction="0" />

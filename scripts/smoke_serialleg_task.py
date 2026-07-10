@@ -120,10 +120,17 @@ def _tensor_joint_ids(indices: slice | torch.Tensor, joint_count: int) -> list[i
 def _validate_topology_and_control(env, robot: Articulation) -> tuple[list[int], list[int]]:
     expected_policy = SERIALLEG_CONTRACT.policy_joint_order
     expected_passive = SERIALLEG_CONTRACT.passive_joint_names
-    if robot.num_bodies != 11 or robot.num_joints != 10:
+    if robot.num_bodies != len(SERIALLEG_CONTRACT.links) or robot.num_joints != len(SERIALLEG_CONTRACT.tree_joints):
         raise RuntimeError(f"unexpected articulation size: bodies={robot.num_bodies} joints={robot.num_joints}")
     if set(robot.joint_names) != set(SERIALLEG_CONTRACT.tree_joints):
         raise RuntimeError(f"unexpected articulation joints: {robot.joint_names}")
+    if robot.num_fixed_tendons != len(SERIALLEG_CONTRACT.fixed_tendons):
+        raise RuntimeError(
+            f"unexpected fixed tendon count: expected={len(SERIALLEG_CONTRACT.fixed_tendons)} "
+            f"actual={robot.num_fixed_tendons}"
+        )
+    if tuple(robot.fixed_tendon_names) != SERIALLEG_CONTRACT.tendon_root_joint_names:
+        raise RuntimeError(f"unexpected fixed tendon roots: {robot.fixed_tendon_names}")
 
     if env.action_manager.active_terms != ["joint_effort"] or env.action_manager.total_action_dim != 6:
         terms = env.action_manager.active_terms
@@ -158,6 +165,9 @@ def _validate_topology_and_control(env, robot: Articulation) -> tuple[list[int],
         raise RuntimeError(f"passive actuator coverage mismatch: {configured_passive_ids} vs {passive_ids}")
     if set(configured_policy_ids).intersection(configured_passive_ids):
         raise RuntimeError("policy and passive actuator groups overlap")
+    tendon_root_ids = set(_joint_ids(robot, SERIALLEG_CONTRACT.tendon_root_joint_names))
+    if tendon_root_ids.intersection(configured_policy_ids + configured_passive_ids):
+        raise RuntimeError("fixed-tendon root joints must not be actuator-controlled")
     return policy_ids, passive_ids
 
 

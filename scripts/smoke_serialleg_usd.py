@@ -32,6 +32,13 @@ def _load_serialleg_contract() -> Any:
 CONTRACT = _load_serialleg_contract()
 DEFAULT_USD = ASSET_DIR / CONTRACT.runtime_usd
 EXPECTED_JOINTS = set(CONTRACT.tree_joints)
+EXPECTED_BODY_COUNT = len(CONTRACT.links)
+EXPECTED_JOINT_COUNT = len(CONTRACT.tree_joints)
+EXPECTED_TENDON_ROOTS = tuple(CONTRACT.tendon_root_joint_names)
+EXPECTED_TENDON_MOUNTS = tuple(CONTRACT.tree_joints[name].child for name in EXPECTED_TENDON_ROOTS)
+ACTUATED_JOINTS = tuple(
+    joint_name for group in CONTRACT.actuator_groups.values() if group.actuated for joint_name in group.joint_names
+)
 DEFAULT_JOINT_POSITIONS = CONTRACT.default_joint_positions
 LOOPS = tuple(
     (loop.name, loop.body0, loop.local_pos0, loop.body1, loop.local_pos1) for loop in CONTRACT.loop_joints.values()
@@ -109,6 +116,19 @@ def _max_loop_residual(robot: Articulation) -> float:
     return residual
 
 
+def _fixed_tendon_lengths(robot: Articulation) -> dict[str, float]:
+    """Evaluate the source MJCF fixed-tendon coordinates from articulation joint positions."""
+    positions = robot.data.joint_pos[0]
+    joint_indices = {name: index for index, name in enumerate(robot.joint_names)}
+    return {
+        tendon.name: sum(
+            coefficient * float(positions[joint_indices[joint_name]].item())
+            for joint_name, coefficient in zip(tendon.joint_names, tendon.coefficients, strict=True)
+        )
+        for tendon in CONTRACT.fixed_tendons.values()
+    }
+
+
 def _collision_shape_types(body_names: list[str]) -> dict[str, tuple[str, ...]]:
     """Return direct collider geometry types below every articulation body."""
     from pxr import Usd, UsdGeom, UsdPhysics
@@ -129,7 +149,7 @@ def _collision_shape_types(body_names: list[str]) -> dict[str, tuple[str, ...]]:
                 shape_types.append("Cylinder")
             elif prim.IsA(UsdGeom.Gprim):
                 shape_types.append(prim.GetTypeName())
-        if not shape_types:
+        if not shape_types and body_name not in EXPECTED_TENDON_MOUNTS:
             raise RuntimeError(f"body {body_name} has no direct collider geometry")
         result[body_name] = tuple(shape_types)
     return result
@@ -152,6 +172,28 @@ def _resolve_runtime_limits() -> tuple[int, float]:
     if ARGS.min_contact_force <= 0.0:
         raise ValueError("--min-contact-force must be positive")
     return steps, max_loop_residual
+
+
+def _validate_articulation_contract(robot: Articulation) -> None:
+    """Require the runtime articulation to expose the generated topology and tendons."""
+    if robot.num_instances != 1:
+        raise RuntimeError(f"expected one articulation instance, got {robot.num_instances}")
+    if robot.num_bodies != EXPECTED_BODY_COUNT:
+        raise RuntimeError(f"expected {EXPECTED_BODY_COUNT} rigid bodies, got {robot.num_bodies}")
+    if robot.num_joints != EXPECTED_JOINT_COUNT or set(robot.joint_names) != EXPECTED_JOINTS:
+        raise RuntimeError(f"unexpected articulation joints ({robot.num_joints}): {robot.joint_names}")
+    if robot.num_fixed_tendons != len(CONTRACT.fixed_tendons):
+        raise RuntimeError(f"expected {len(CONTRACT.fixed_tendons)} fixed tendons, got {robot.num_fixed_tendons}")
+    if tuple(robot.fixed_tendon_names) != EXPECTED_TENDON_ROOTS:
+        raise RuntimeError(
+            f"unexpected fixed tendon roots: expected={EXPECTED_TENDON_ROOTS} actual={tuple(robot.fixed_tendon_names)}"
+        )
+    actuator_joint_names = {
+        robot.joint_names[int(index)] for actuator in robot.actuators.values() for index in actuator.joint_indices
+    }
+    unexpected_actuated_roots = actuator_joint_names.intersection(EXPECTED_TENDON_ROOTS)
+    if unexpected_actuated_roots:
+        raise RuntimeError(f"fixed-tendon root joints must be unactuated: {sorted(unexpected_actuated_roots)}")
 
 
 def main() -> int:
@@ -199,7 +241,7 @@ def main() -> int:
         ),
         actuators={
             "neutral": ImplicitActuatorCfg(
-                joint_names_expr=[".*"],
+                joint_names_expr=list(ACTUATED_JOINTS),
                 effort_limit_sim=0.0,
                 stiffness=0.0,
                 damping=0.0,
@@ -219,14 +261,13 @@ def main() -> int:
         )
     simulation.reset()
 
-    if robot.num_instances != 1:
-        raise RuntimeError(f"expected one articulation instance, got {robot.num_instances}")
-    if robot.num_bodies != 11:
-        raise RuntimeError(f"expected 11 rigid bodies, got {robot.num_bodies}")
-    if robot.num_joints != 10 or set(robot.joint_names) != EXPECTED_JOINTS:
-        raise RuntimeError(f"unexpected articulation joints ({robot.num_joints}): {robot.joint_names}")
+    _validate_articulation_contract(robot)
+    robot.write_joint_state_to_sim(robot.data.default_joint_pos, robot.data.default_joint_vel)
 
     shape_types = _collision_shape_types(robot.body_names)
+    mount_colliders = {name: shape_types[name] for name in EXPECTED_TENDON_MOUNTS if shape_types[name]}
+    if mount_colliders:
+        raise RuntimeError(f"virtual tendon mount bodies must be geometry-free: {mount_colliders}")
     wheel_names = ("l_wheel_Link", "r_wheel_Link")
     mesh_body_names = tuple(name for name, types in shape_types.items() if "Mesh" in types)
     if ARGS.ground_contact:
@@ -247,6 +288,12 @@ def main() -> int:
             )
 
     max_residual = _max_loop_residual(robot)
+    initial_joint_positions = {
+        name: float(robot.data.joint_pos[0, index].item()) for index, name in enumerate(robot.joint_names)
+    }
+    max_tendon_root_position = max(abs(initial_joint_positions[name]) for name in EXPECTED_TENDON_ROOTS)
+    initial_tendon_lengths = _fixed_tendon_lengths(robot)
+    tendon_length_extrema = {name: [length, length] for name, length in initial_tendon_lengths.items()}
     peak_contact_forces = {name: 0.0 for name in robot.body_names}
     physics_dt = simulation.get_physics_dt()
     for _ in range(steps):
@@ -275,9 +322,30 @@ def main() -> int:
         if not all(torch.isfinite(tensor).all() for tensor in state_tensors):
             raise RuntimeError("non-finite articulation state during smoke test")
         max_residual = max(max_residual, _max_loop_residual(robot))
+        joint_positions = {
+            name: float(robot.data.joint_pos[0, index].item()) for index, name in enumerate(robot.joint_names)
+        }
+        max_tendon_root_position = max(
+            max_tendon_root_position,
+            *(abs(joint_positions[name]) for name in EXPECTED_TENDON_ROOTS),
+        )
+        for tendon_name, length in _fixed_tendon_lengths(robot).items():
+            extrema = tendon_length_extrema[tendon_name]
+            extrema[0] = min(extrema[0], length)
+            extrema[1] = max(extrema[1], length)
 
     if max_residual > max_loop_residual_limit:
         raise RuntimeError(f"loop residual {max_residual:.3e}m exceeds threshold {max_loop_residual_limit:.3e}m")
+    if max_tendon_root_position > 1.01e-4:
+        raise RuntimeError(f"virtual tendon-root joint position {max_tendon_root_position:.3e}rad exceeds URDF limit")
+    for tendon in CONTRACT.fixed_tendons.values():
+        observed_lower, observed_upper = tendon_length_extrema[tendon.name]
+        if observed_lower < tendon.lower - 1.0e-5 or observed_upper > tendon.upper + 1.0e-5:
+            raise RuntimeError(
+                f"fixed tendon {tendon.name} coordinate escaped source range "
+                f"[{tendon.lower:.6f}, {tendon.upper:.6f}]rad: "
+                f"observed=[{observed_lower:.6f}, {observed_upper:.6f}]rad"
+            )
 
     if ARGS.ground_contact:
         weak_wheels = {
@@ -299,7 +367,13 @@ def main() -> int:
     print(
         f"[serialleg-usd-smoke] bodies={robot.num_bodies} dofs={robot.num_joints} "
         f"device={ARGS.device} steps={steps} max_loop_residual={max_residual:.3e}m "
-        f"threshold={max_loop_residual_limit:.3e}m",
+        f"threshold={max_loop_residual_limit:.3e}m fixed_tendons={robot.num_fixed_tendons} "
+        f"max_tendon_root_position={max_tendon_root_position:.3e}rad",
+        flush=True,
+    )
+    print(
+        f"[serialleg-usd-smoke] fixed_tendon_roots={tuple(robot.fixed_tendon_names)} "
+        f"initial_coordinates_rad={initial_tendon_lengths} coordinate_extrema_rad={tendon_length_extrema}",
         flush=True,
     )
     if ARGS.ground_contact:
