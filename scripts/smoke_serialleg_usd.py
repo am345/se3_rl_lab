@@ -15,7 +15,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_USD = (
     PROJECT_ROOT
     / "source/se3_rl_lab/se3_rl_lab/assets/robots/serialleg/usd"
-    / "serialleg_closed_chain_v3_train_obb_trim.usd"
+    / "serialleg_closed_chain_complex_collision.usd"
 )
 
 EXPECTED_JOINTS = {

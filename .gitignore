@@ -16,7 +16,7 @@
 
 # The validated SerialLeg runtime asset is collision-only and intentionally
 # small enough for ordinary Git; keep other USD files as generated outputs.
-!source/se3_rl_lab/se3_rl_lab/assets/robots/serialleg/usd/serialleg_closed_chain_v3_train_obb_trim.usd
+!source/se3_rl_lab/se3_rl_lab/assets/robots/serialleg/usd/serialleg_closed_chain_complex_collision.usd
 
 # Python
 .DS_Store

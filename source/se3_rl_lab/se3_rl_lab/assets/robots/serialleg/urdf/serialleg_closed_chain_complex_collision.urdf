@@ -1,6 +1,6 @@
 <?xml version='1.0' encoding='utf-8'?>
-<robot name="serialleg_closed_chain_v3_train_obb_trim">
-  <!-- DO NOT EDIT: regenerate with scripts/convert_serialleg_mjcf_to_urdf.py. Canonical source: source/se3_rl_lab/se3_rl_lab/assets/robots/serialleg/mjcf/serialleg_closed_chain_v3_train_obb_trim.xml. Source SHA256: 4edab8e9ee6903e0b821327bf1211024ebe19d862839914ed01e0d9d8fd7e21d. -->
+<robot name="serialleg_closed_chain_complex_collision">
+  <!-- DO NOT EDIT: regenerate with scripts/convert_serialleg_mjcf_to_urdf.py. Canonical source: source/se3_rl_lab/se3_rl_lab/assets/robots/serialleg/mjcf/serialleg_closed_chain_complex_collision.xml. Source SHA256: 062ed893db2aa857309385e69c26ea85833917758dcde4da4a0c364e761734f2. -->
   <!-- Intentionally deferred MJCF-only semantics: joint armature; fixed-tendon coupled limits; spatial-tendon sites; option timestep/solver/cone; geom/equality solref and solimp; contact masks/friction; standing keyframe; world floor/light and debug display materials. -->
   <!-- Deferred coupled limits: 0 <= q_lf0_Joint - q_l_drive_bar_Joint <= 1.509535270050; 0 <= q_r_drive_bar_Joint - q_rf0_Joint <= 1.509535270050. -->
   <!-- The MJCF base_link world/spawn z=0.22 is intentionally not baked into this floating-root URDF. -->

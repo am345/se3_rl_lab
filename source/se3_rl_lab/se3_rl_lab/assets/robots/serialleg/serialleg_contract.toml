@@ -1,9 +1,9 @@
 schema_version = 1
-robot_name = "serialleg_closed_chain_v3_train_obb_trim"
+robot_name = "serialleg_closed_chain_complex_collision"
 root_link = "base_link"
 root_height = 0.22
-canonical_urdf = "urdf/serialleg_closed_chain_v3_train_obb_trim.urdf"
-runtime_usd = "usd/serialleg_closed_chain_v3_train_obb_trim.usd"
+canonical_urdf = "urdf/serialleg_closed_chain_complex_collision.urdf"
+runtime_usd = "usd/serialleg_closed_chain_complex_collision.usd"
 links = [
   "base_link",
   "lf0_Link",

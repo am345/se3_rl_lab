@@ -23,12 +23,12 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_SOURCE = (
     PROJECT_ROOT
     / "source/se3_rl_lab/se3_rl_lab/assets/robots/serialleg/mjcf"
-    / "serialleg_closed_chain_v3_train_obb_trim.xml"
+    / "serialleg_closed_chain_complex_collision.xml"
 )
 DEFAULT_OUTPUT = (
     PROJECT_ROOT
     / "source/se3_rl_lab/se3_rl_lab/assets/robots/serialleg/urdf"
-    / "serialleg_closed_chain_v3_train_obb_trim.urdf"
+    / "serialleg_closed_chain_complex_collision.urdf"
 )
 
 EXPECTED_LINK_NAMES = {
@@ -481,7 +481,7 @@ def _validate_source(
     loops: list[LoopRecord],
     meshes: dict[str, Path],
 ) -> None:
-    if mjcf_root.get("model") != "serialleg_closed_chain_v3_train_obb_trim":
+    if mjcf_root.get("model") != "serialleg_closed_chain_complex_collision":
         raise ConversionError(f"unexpected source model {mjcf_root.get('model')!r}")
     if {record.name for record in records} != EXPECTED_LINK_NAMES or len(records) != 11:
         raise ConversionError("canonical body/link set changed")
@@ -834,12 +834,12 @@ def _build_urdf(source: Path, output: Path) -> tuple[bytes, float, float]:
         name: Path(os.path.relpath(path, output.parent.resolve())).as_posix() for name, path in meshes.items()
     }
     source_sha256 = hashlib.sha256(source.read_bytes()).hexdigest()
-    robot = ET.Element("robot", {"name": "serialleg_closed_chain_v3_train_obb_trim"})
+    robot = ET.Element("robot", {"name": "serialleg_closed_chain_complex_collision"})
     robot.append(
         ET.Comment(
             " DO NOT EDIT: regenerate with scripts/convert_serialleg_mjcf_to_urdf.py. "
             "Canonical source: source/se3_rl_lab/se3_rl_lab/assets/robots/serialleg/mjcf/"
-            "serialleg_closed_chain_v3_train_obb_trim.xml. "
+            "serialleg_closed_chain_complex_collision.xml. "
             f"Source SHA256: {source_sha256}. "
         )
     )
