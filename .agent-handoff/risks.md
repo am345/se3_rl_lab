@@ -8,6 +8,13 @@
 
 ## Current Risks
 
+- `WIN-46S653M0DI0` 的默认运行依赖本机 SSH alias `se3_rl_lab_gpufree`。仓库不保存实际 endpoint、密码、私钥或 TURN 凭据；若 alias 缺失，先检查本机 `%USERPROFILE%\.ssh\config`，不要把凭据补进 tracked 文档。
+- 远端 GitHub 代理依赖至少一条活跃 SSH reverse forward：本机 `127.0.0.1:7897` → 远端 `127.0.0.1:7890`。旧 VS Code/SSH 连接可能已经占用 7890；这通常不是异常。若所有 SSH 连接断开，远端 `.bashrc` 仍会保留 proxy 变量但端口无 listener，GitHub 请求会超时。
+- 不要让 PyTorch/NVIDIA/PyPI 大包走上述 reverse proxy。首次 `uv sync` 曾因 `download-r2.pytorch.org` 未命中 `NO_PROXY` 而极慢；重试时保留 `/root/gpufree-data/.cache/uv`，并直连 `.pytorch.org`、`.nvidia.com`、`pypi.org`、`.pythonhosted.org`。
+- 服务器系统内 `reboot` 后曾出现 PCI 可见 RTX 4090、但 `/dev/nvidia*` 缺失且 `torch.cuda.is_available()==False`；需要在 GPUFree 控制台重新分配 GPU。Python 环境和 19GB 依赖无需重装。
+- GUI 依赖 GPUFree 自动启动的 `Xorg :20`/Selkies/nginx 和 SSH `LocalForward 3000`。端口 3000 被占用通常表示已有 tunnel；远端重启后需重新连接 SSH并重新启动 GUI 脚本。训练应默认 `--headless`，避免无意长期占用 GUI/Vulkan 资源。
+- 远端 49GB 数据盘当前同时放置 `.venv`、约 20GB 级 uv cache、仓库和训练输出，空间不是无限。清 cache 前确认 `.venv` 已完成同步；重要 checkpoints/logs 应在释放实例前备份到独立持久位置。
+- VS Code Remote-SSH 曾因多连接、远端安装大型 `openai.chatgpt` extension 和打开过大的目录而明显卡顿。保持 Codex/ChatGPT extension 在本地 UI 侧、`remote.SSH.useExecServer=false`，只打开远端项目根；如再次变慢，先用 `diagnose` 采集进程/extension host/SSH 日志，不要直接重装服务器环境。
 - Isaac Sim 5.1 已接受 `PhysxTendonAxisRootAPI` 的 `gearing=0`、`forceCoefficient=0` root；CPU 64-step 最大 virtual-root 漂移 `8.453e-07 rad`。CUDA 接触、多环境和长训练下仍需验收 drift/solver 压力。
 - 两个 mount 各 `1e-4 kg` / `1e-7 kg·m²`，base 已按刚体合成公式精确补偿，zero-pose aggregate mass/COM/inertia 静态守恒；但 virtual joint 发生非零旋转时，下游腿机构会产生原模型没有的微小共同转动。
 - 本地与 GitHub 历史均已重写为新 root `72a2cd8`；旧历史与新历史不相关，已有协作者必须重新 clone 或显式 fetch 后 hard reset。恢复 bundle 暂存于 `/tmp/se3_rl_lab_pre_rewrite_87e145a.bundle`，可能随系统临时目录清理而消失，如需长期保留应移到持久备份位置。
@@ -16,8 +23,10 @@
 - 直接 `uv run python -c "import se3_rl_lab"` 在未通过 AppLauncher/Kit bootstrap 的上下文仍可能报 `ModuleNotFoundError: No module named 'pxr'`；IsaacLab/IsaacSim 脚本应先通过 `AppLauncher` / `SimulationApp` 启动运行时。
 - IsaacSim 启动时大量 `Failed to create change watch ... errno=28/No space left on device`，当前 `/proc/sys/fs/inotify/max_user_watches=65536`、`max_user_instances=128`，疑似 inotify watch 不足；目前未阻止 task 注册或 CPU/headless 环境创建。
 - `OMNI_KIT_ACCEPT_EULA=YES uv run python -u scripts/zero_agent.py --task Template-Se3-Rl-Lab-v0 --num_envs 1 --headless` 在 CUDA 路径报 `omni.physx.tensors` CUDA OOM，随后 `Failed to get DOF velocities from backend`。
-- SerialLeg task 已完成 USD 切换、delayed 6D action、34D/40D observations 与 CPU/compact-CUDA 单环境短 gate；但 flat commands、基础 events/terminations/curriculum、官方 locomotion rewards 和 PPO/GRU 仍未接入，不要误报为整个 RL 迁移已完成。旧 flat 自定义奖励按决策推迟到 finetune，不是当前 blocker。
-- 当前 observation 的 8 个 command slots 在缺少 `velocity_height` term 时明确输出零；这是可运行的过渡合同，不代表 command 语义已迁移。接入真实 term 后必须移除 fallback 并保持严格 8D shape gate；当前阶段末 3D jump command 必须默认保持零，且不得接入跳跃奖励、事件或 curriculum。
+- SerialLeg task 已完成 USD、delayed 6D action、34D/40D observations、非跳跃 command/events/terminations/curriculum、官方 locomotion rewards 与 feed-forward MLP/PPO，并通过 CPU/compact-CUDA 最多 4 环境短 gate、4-env 最小 PPO update 和 checkpoint round-trip；长 rollout、目标规模 CUDA capacity/训练与 finetune 自定义奖励仍未完成，不要误报为整个 RL 迁移完成。
+- 新 policy 明确为无 history 的 feed-forward MLP，旧 GRU checkpoint 与当前模型结构不兼容，不能直接 resume；若需要复用旧策略，只能另做权重迁移/蒸馏或重新训练，当前基础路径按重新训练处理。
+- `velocity_height` 现为强制 8D term，缺失或 shape 错误会硬失败；当前 pitch/roll 与末 3D jump slots 恒为零。内部 `base_velocity=[vx,0,yaw]` 只是官方 reward 适配视图，不得暴露给 policy 或替换 legacy 8D checkpoint 合同。
+- 启用官方 `bad_orientation`/`base_contact` termination 后，1-env CPU 64+64 零/小动作旧 smoke 会在长零动作阶段按设计终止；默认 gate 已收敛为 8+8，只验证 wiring 与短时物理稳定性。长时稳定性必须用训练策略控制的 rollout 验收，不能把短 gate 解释为长训练通过。
 - legacy command observation scale `(2.0, 0.25, 5.0, 5.0, 5.0)` 与当前最终课程范围不完全匹配：`vx=±2.4 m/s` 会成为 actor `±4.8`，height 也未中心化。用户决定低优先级推迟到 finetune；在此之前为兼容旧 policy 接口保持不变，不应在单一训练路径中私自修改。
 - 原始 closed-chain MJCF 直接经 IsaacSim importer 失败：`<equality><connect site1/site2>` 触发 `basic_string::_M_construct null not valid`；fixed/spatial tendon 变体触发 `Used null prim`。
 - MJCF→URDF 的 joint axis/origin、body inertia、visual/collision transform、site-pair local pose、初始构型、左右镜像、virtual-root topology、窄限位和 aggregate inertia 均由强不变量覆盖。USD 已承载 fixed tendon coupled ranges，但仍不表达 spatial tendon、MJCF contact/solver 或 keyframe 的全部语义。

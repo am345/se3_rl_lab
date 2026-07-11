@@ -38,8 +38,9 @@
 
 ## Current Pointer
 
-- Last updated: 2026-07-10
-- Workspace root: `/home/am345/se3_rl_lab`
+- Last updated: 2026-07-11
+- Workspace root on `WIN-46S653M0DI0`: `D:\RoboMaster\se3_rl_lab`
+- Default execution target on this computer: SSH alias `se3_rl_lab_gpufree`；详见 `.agent-handoff/workspace.md` 的 machine-specific 章节
 - Current state file: `.agent-handoff/snapshot.md`
 - Primary next-action source: `.agent-handoff/snapshot.md`
 - Risk source: `.agent-handoff/risks.md`

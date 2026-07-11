@@ -1,5 +1,42 @@
 # Workspace Map
 
+## Machine-Specific Execution Target: `WIN-46S653M0DI0`
+
+- 先用 `hostname` 或 PowerShell `[System.Environment]::MachineName` 识别电脑。结果为 `WIN-46S653M0DI0` 时，默认在 GPUFree 服务器运行依赖安装、Isaac Sim、CUDA smoke 和训练；本机仓库用于编辑、Codex 和 Git 检查。
+- 本机仓库：`D:\RoboMaster\se3_rl_lab`。默认 SSH alias：`se3_rl_lab_gpufree`。实际 `HostName`、`Port`、用户和 key path 由本机 `%USERPROFILE%\.ssh\config` 管理，仓库文档不得复制密码、私钥或平台 TURN 凭据。
+- 远端 workspace：`/root/gpufree-data/se3-workspace/`；项目为 `se3_rl_lab/`，IsaacLab sibling 为 `IsaacLab/`。项目分支/SHA/clean 状态以实时 Git 查询为准；IsaacLab 固定并验证于 `b4c321024792976150ca55fddb26fa34480d974e`。
+- 远端 Python 环境：`/root/gpufree-data/se3-workspace/se3_rl_lab/.venv`；uv cache：`/root/gpufree-data/.cache/uv`。已验证 Isaac Sim `5.1.0.0`、IsaacLab package `0.54.4`/project `2.3.2`、Python 3.11、PyTorch `2.7.0+cu128`、torchvision `0.22.0+cu128`、RSL-RL `5.0.1`。
+- 当前 GPU：RTX 4090 24GB，driver `580.126.09`，PyTorch CUDA 12.8。开始任务前用 `ssh se3_rl_lab_gpufree nvidia-smi` 做最小检查；平台重启/重新分配可能使 GPU 设备节点暂时消失。
+- 数据盘挂载点 `/root/gpufree-data` 当前约 49GB；`.venv` 与 uv cache 都较大。不要把仓库或环境放回约 30GB 的系统盘。普通重启会保留数据盘；释放实例/平台回收的持久性应按控制台规则确认，重要 checkpoints 需要另行备份。
+
+### SSH Contract And Connection Tips
+
+- 使用 `ssh se3_rl_lab_gpufree` 或 VS Code Remote-SSH 的同名主机；已配置 key auth，不应每次输入密码。
+- 有效转发合同：`RemoteForward 7890 127.0.0.1:7897` 把本机代理送到远端 `127.0.0.1:7890`；`LocalForward 3000 127.0.0.1:3000` 把 GPUFree Selkies 桌面送到本机 `http://127.0.0.1:3000`。
+- 已配置 keepalive、compression 和 `ExitOnForwardFailure no`。多条 VS Code/SSH 连接可能争用远端 7890 或本机 3000；看到“端口被占用”通常表示已有连接正在持有转发。优先复用/关闭旧连接，不要删除代理配置或重建 key。
+- 本机 Clash HTTP/SOCKS mixed proxy 实际监听 `127.0.0.1:7897`；远端 shell 的 `HTTP_PROXY`、`HTTPS_PROXY`、`ALL_PROXY` 指向 `127.0.0.1:7890`。只有至少一条带 `RemoteForward` 的 SSH 连接存活时，远端 GitHub 代理才可用。
+- GitHub clone/fetch 走远端 `127.0.0.1:7890`；PyPI、NVIDIA PyPI 与 PyTorch CDN 大包应直连。运行 `uv sync` 时把 `download-r2.pytorch.org`、`.pytorch.org`、`.nvidia.com`、`pypi.org`、`.pythonhosted.org` 加入 `NO_PROXY/no_proxy`，避免大文件绕回本机代理导致数小时慢速下载。
+- VS Code 卡顿时只打开远端项目目录，不要打开 `/root` 或 `/root/gpufree-data`；不要让 Remote-SSH 索引 `.venv`/uv cache。当前本机设置使用 `remote.SSH.useExecServer=false`，并强制 `openai.chatgpt` 与 `GitHub.copilot-chat` 作为本地 UI extension，避免在服务器重复安装约数百 MB 的 Codex/ChatGPT extension。
+
+### GUI And Headless Usage
+
+- GPUFree 镜像已自带 `Xorg :20`、XFCE、Selkies WebRTC 与 nginx `:3000`；远端 OpenGL renderer 已验证为 RTX 4090。SSH 连通后在本机浏览器打开 `http://127.0.0.1:3000`。
+- GUI 脚本设置 `DISPLAY=:20` 并且不要传 `--headless`，例如：`DISPLAY=:20 OMNI_KIT_ACCEPT_EULA=YES .venv/bin/python scripts/random_agent.py --task SerialLeg-Flat-ClosedChain-v0 --num_envs 1 --device cuda:0`。
+- 训练默认继续使用 headless，例如在训练命令中显式传 `--headless`；GUI 只用于少环境调试、碰撞目视和回放。Isaac Sim 自带公网 livestream 需要额外 TCP/UDP 端口，本机方案优先复用 GPUFree 已配置 TURN 的 Selkies 桌面。
+- 远程桌面和 Isaac GUI 进程在服务器重启后不会保留；SSH 转发会在下一次连接时按 config 恢复，GUI 脚本需重新启动。
+
+### Quick Verification
+
+- SSH/代理：`ssh se3_rl_lab_gpufree "curl -I --max-time 10 https://github.com"`。
+- GPU：`ssh se3_rl_lab_gpufree nvidia-smi`。
+- 环境：`ssh se3_rl_lab_gpufree "cd /root/gpufree-data/se3-workspace/se3_rl_lab && .venv/bin/python -c 'import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))'"`。
+- 完整 task smoke：`OMNI_KIT_ACCEPT_EULA=YES .venv/bin/python scripts/smoke_serialleg_task.py --headless --device cuda:0 --compact-gpu-buffers`。
+
+## Suggested Skills For The Next Agent
+
+- `diagnose`: VS Code/SSH、代理、下载速度、GPU 设备或 Isaac Sim 性能出现回归时使用，要求先复现和采集证据再改配置。
+- `handoff`: 完成新的服务器配置、训练里程碑或重要故障处理后，继续压缩更新本多文档 handoff；始终去除密码、私钥、token 和 TURN 凭据。
+
 ## Repository Structure
 
 - `.`: 仓库根目录。
@@ -58,7 +95,7 @@
 - 用户目标是新开 IsaacLab 仓库，只迁移 SerialLeg 的 flat 训练；可选旧仓库 `../se3_rl` 仅作参考，不是运行时依赖。
 - 官方模板生成选择为 external / manager-based single-agent / `rsl_rl`。
 - 旧训练参考仓库可放在 sibling `../se3_rl`；Kyber 参考仓库仅为本机历史参考，不是依赖。
-- SerialLeg asset 已搬迁，Kyber 风格 URDF→USD external-loop/fixed-tendon 资产管线已通过；delayed action 与 34D/40D observations 已迁移，commands/基础 rewards/terminations/curriculum/PPO 尚未完整迁移。
+- SerialLeg asset 已搬迁，Kyber 风格 URDF→USD external-loop/fixed-tendon 资产管线已通过；delayed action、34D/40D observations、非跳跃 commands/events/terminations/curriculum、IsaacLab 官方基础 rewards 与 feed-forward MLP/PPO 已迁移，4-env 最小训练和 checkpoint round-trip 已通过。
 - 当前 task id 为 `SerialLeg-Flat-ClosedChain-v0`，已切到预生成 13-body/12-DOF USD；CPU/compact-CUDA 单环境 task gate 已通过。
 - 自包含 runtime USD 是约 524 KiB 的 collision-only 普通 Git asset；canonical URDF 同样是 collision-only，当前 runtime/canonical 均为 13-link/12-joint 双 virtual-root + fixed-tendon topology。
 
