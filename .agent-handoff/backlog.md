@@ -1,5 +1,7 @@
 # Task Backlog
 
+- [x] 为 `WIN-46S653M0DI0` 建立默认 GPUFree 执行环境：SSH key/alias、GitHub reverse proxy、Selkies GUI local forward、sibling repos、locked `.venv`、RTX 4090 CUDA 与 Isaac Sim SerialLeg smoke 均已验证。
+- [ ] 开始长训练前确认数据盘剩余空间并制定 checkpoints/logs 外部备份；当前 49GB 数据盘同时承载约 19GB `.venv`、uv cache、仓库和训练产物，释放实例前不得假设数据一定保留。
 - [x] 运行真实 `uv sync` 创建 `.venv` 并安装当前锁定依赖。
 - [x] 用户确认接受 NVIDIA Omniverse EULA 后，用 `OMNI_KIT_ACCEPT_EULA=YES` 验证 IsaacSim 可启动，并用 registry probe 确认 `Template-Se3-Rl-Lab-v0` 注册。
 - [x] 用 CPU/headless zero agent 验证官方模板环境可创建并进入 simulation loop。
@@ -39,9 +41,10 @@
 - [x] 按用户要求完成首个 commit 并推送到 GitHub `origin/main`。
 - [x] 迁移 custom delayed 6D action：腿位置/轮速度旧 policy scale、active-tendon coordinate、逐环境 FIFO 与 partial reset。
 - [x] 迁移 34D actor / 40D critic observation，并增加布局/数值/virtual-root 隔离测试和 CPU/CUDA task shape gate。
-- [ ] 迁移 flat `velocity_height` commands、基础 events/domain randomization、terminations 和非跳跃 curriculum；接入后移除“term 不存在”的 transitional fallback，但保持严格 8D command 且默认 jump 3D 为零。
-- [ ] 只配置 IsaacLab 官方 manager-based locomotion 基础 rewards，并用固定状态、CPU/CUDA 单环境与多环境短 rollout 验证迁移后的基本训练链路。
-- [ ] 迁移 RSL-RL PPO/GRU cfg，包括 obs-group mapping、64-step rollout/BPTT、归一化和 checkpoint 合同。
+- [x] 迁移 flat `velocity_height` commands、基础 events/domain randomization、terminations 和非跳跃 curriculum；已移除 transitional fallback，严格保持 8D command，pitch/roll 与 jump 3D 当前为零。
+- [x] 只配置 IsaacLab 官方 manager-based locomotion 基础 rewards，并用固定状态、CPU/CUDA 1/4 环境短 rollout 验证迁移后的基本训练链路。
+- [x] 迁移 feed-forward RSL-RL MLP/PPO cfg：分离 actor/critic obs-group mapping、`[512,256,128]` ELU、actor normalization off、critic normalization on、64-step rollout；4-env 最小 PPO update 与 checkpoint save/load round-trip 已通过，不使用 GRU/BPTT。
+- [ ] 在目标 CUDA env count 下完成短训练与有策略控制的长 rollout；先定标 PhysX contact/pair buffers，再记录吞吐、显存、termination 分布、loop residual 与 virtual-root drift。
 - [ ] finetune 阶段再评估并适配旧 flat 自定义奖励；当前不迁移 command-driven 高度、分段/联合跟踪、轮腿专属 penalty/gating 或任何跳跃奖励/事件/curriculum。
 - [ ] 低优先级/finetune：重新评估 command observation normalization。当前 legacy scale 会令最终 `vx=±2.4 m/s` 映射为 `±4.8`，且 height 未中心化；若修改，必须同步训练、play、deploy/sim2sim 与 checkpoint 兼容策略。
 - [x] 按用户最新要求取消 handoff 的 `.gitignore` 规则，将 `AGENT_HANDOFF.md`、`AGENT_SESSION_PROMPTS.md` 与 `.agent-handoff/*.md` 纳入 Git，支持跨电脑恢复；原“本地私有”策略已废止。

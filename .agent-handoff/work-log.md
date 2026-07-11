@@ -1,5 +1,28 @@
 # Current Work Log
 
+## 2026-07-11 — Feed-forward MLP/PPO 与 checkpoint round-trip
+
+- Policy: 按用户决定移除 GRU 迁移方向，`rsl_rl_ppo_cfg.py` 改用新版分离式 `RslRlMLPModelCfg`；actor/critic 均为 `[512,256,128]` + ELU，actor 34D/normalization off/scalar Gaussian std 1，critic 40D/empirical normalization on。
+- Runner/PPO: rollout 固定 64 steps 以对齐 curriculum；默认 5000 iterations、每 500 保存。PPO 对齐 Kyber 基础值：clip `0.2`、entropy `0.01`、5 epochs、4 mini-batches、adaptive lr `1e-3`、gamma/lam `0.99/0.95`、KL `0.01`、grad norm `1.0`。
+- Runtime validation: 远端 4-env CPU simulation 完成 256 steps 和 1 PPO update，模型结构与 normalization 实际解析正确并生成 `model_0.pt`；第二次训练成功加载该 checkpoint 并继续完成 1 update。
+- Docs/scope: README 和 handoff 已记录 MLP/PPO 合同、验证命令、旧 GRU checkpoint 不兼容及下一步；未改资产/YAML/USD，未做目标规模 CUDA 训练或长 rollout。
+
+## 2026-07-11 — 非跳跃基础环境语义与官方 locomotion rewards
+
+- Commands: 新增 IsaacLab `VelocityHeightCommand`，严格输出 legacy 8D；当前 pitch/roll 与 jump 3D 恒零，height `[0.20,0.32] m`，速度范围按 `0/400/800/1200/1600/2000` policy iteration 扩展并施加差速轮速预算。删除 observation 的缺 term 全零 fallback。
+- Official reward bridge: 新增内部 `PlanarVelocityCommand`，只把同一 command 映射为 `[vx,0,yaw]`；9 个 reward term 直接引用 IsaacLab 官方 tracking/velocity/torque/acceleration/action-rate/orientation/contact 函数，未配置旧 flat 自定义 reward。
+- Environment semantics: 接入官方 material、base mass/COM、policy actuator gain randomization，xy/yaw reset、standing joint reset、课程化 interval push；termination 使用官方 timeout、bad orientation 和 base contact。
+- Gates: task smoke 新增 strict command、差速预算、manager function identity、课程终态与固定状态 tracking reward 检查；CPU 1/4-env 8+8、compact-CUDA 1/4-env 4+4 均通过，passive effort 为 0，loop residual `<4.624e-4 m`。
+- Scope: 未修改资产/YAML/USD 或旧自定义 reward。1-env CPU 64+64 零动作旧 gate 会触发新 termination，因此默认 smoke 改为 8+8；长 rollout 留给有策略控制的训练验收。
+
+## 2026-07-11 — 固化 `WIN-46S653M0DI0` 的 GPUFree 执行环境
+
+- Machine mapping: 本机名 `WIN-46S653M0DI0` 时，默认使用 SSH alias `se3_rl_lab_gpufree`；实际 endpoint、私钥和凭据只留在本机 SSH 配置。
+- Remote setup: 两个 sibling 仓库位于 `/root/gpufree-data/se3-workspace/`，项目/IsaacLab 分别固定为 `01e1c1a`/`b4c3210`；`.venv` 已按 lock 完整同步。
+- Network: 保留本机代理 `127.0.0.1:7897` → 远端 `127.0.0.1:7890` 的 reverse forward；为 PyTorch/NVIDIA/PyPI 大包补充直连域名经验。GUI 通过本机 `3000` → 远端 Selkies `3000` 的 local forward。
+- Runtime: RTX 4090 CUDA matrix、Isaac Sim headless SerialLeg smoke、`Xorg :20` NVIDIA OpenGL 与 Isaac Sim GUI window 均通过。
+- Documentation: 更新 handoff index、snapshot、workspace、decisions、validation、risks 和 backlog；未修改任务源码、资产、依赖或远端环境。
+
 ## 2026-07-10 — handoff 改为 Git 跟踪
 
 - Scope: 按用户要求删除 `.gitignore` 中 `AGENT_HANDOFF.md`、`AGENT_SESSION_PROMPTS.md`、`.agent-handoff/` 三项规则；本轮将首次提交完整 multi-document handoff，支持另一台电脑直接恢复。
@@ -38,7 +61,7 @@
 - Observation: 新增 actor 34D / critic 40D 精确布局、旧 scale、finite clamp、leg sin/cos phase + active angle、last clipped policy action、wheel force 和 flat base height；显式 policy joint selection 防止 passive/virtual-root 泄漏。
 - Transitional boundary: command term 未迁移时 8 个 command slots 明确为零；term 存在后严格校验 8D。未修改 `robot_config.yaml` 或 USD，避免 asset SHA stale。
 - Gates: 新增 `scripts/test_serialleg_observations.py`（4 passed），扩展 task smoke 的 action FIFO/tendon/clamp/reset 与 actor/critic shape gates；CPU 1-env 8+8 和 compact CUDA 1-env 2+2 rollout 均退出 0，passive effort 为 0。
-- Docs: README 已刷新当前状态、动作/观测合同和下一阶段顺序；flat commands/events/rewards/terminations/curriculum 与 PPO/GRU 仍待迁移。
+- Docs: README 当时已刷新动作/观测合同；后续 flat commands/events/rewards/terminations/curriculum 与 feed-forward MLP/PPO 现均已完成，见本文件顶部 2026-07-11 条目。
 - Follow-up decision: legacy command scale 的合理性审计发现最终 `vx=±2.4 m/s` 会映射为 actor `±4.8`，height 也未中心化；用户决定当前不改，作为低优先级 finetune 项记录，并要求届时一并处理 checkpoint/deploy/sim2sim 兼容。
 
 ## 2026-07-10 — PR #3 发布并合并

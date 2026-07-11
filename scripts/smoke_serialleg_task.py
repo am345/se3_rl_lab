@@ -9,6 +9,7 @@ import os
 import sys
 import traceback
 from collections.abc import Mapping, Sequence
+from types import SimpleNamespace
 
 from isaaclab.app import AppLauncher
 
@@ -17,8 +18,8 @@ def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--task", default="SerialLeg-Flat-ClosedChain-v0", help="Registered Gym task id")
     parser.add_argument("--num-envs", type=int, default=1, help="Number of parallel environments")
-    parser.add_argument("--zero-steps", type=int, default=64, help="Environment steps with zero action")
-    parser.add_argument("--controlled-steps", type=int, default=64, help="Environment steps with small actions")
+    parser.add_argument("--zero-steps", type=int, default=8, help="Environment steps with zero action")
+    parser.add_argument("--controlled-steps", type=int, default=8, help="Environment steps with small actions")
     parser.add_argument("--action-amplitude", type=float, default=0.05, help="Peak normalized controlled action")
     parser.add_argument("--max-loop-residual", type=float, default=1.0e-3, help="Maximum loop attachment error")
     parser.add_argument("--min-contact-force", type=float, default=1.0, help="Minimum observed ground contact force")
@@ -47,6 +48,7 @@ import torch  # noqa: E402
 from se3_rl_lab.assets.robots.serialleg_contract import SERIALLEG_CONTRACT  # noqa: E402
 
 from isaaclab.assets import Articulation  # noqa: E402
+from isaaclab.envs import mdp as official_mdp  # noqa: E402
 from isaaclab.sensors import ContactSensor  # noqa: E402
 from isaaclab.utils.math import quat_apply  # noqa: E402
 
@@ -264,6 +266,89 @@ def _validate_delayed_action_contract(env) -> None:
         raise RuntimeError("action reset did not clear raw, delayed, and FIFO buffers")
 
 
+def _validate_mdp_contract(env) -> None:
+    expected_commands = ["velocity_height", "base_velocity"]
+    if env.command_manager.active_terms != expected_commands:
+        raise RuntimeError(f"unexpected command terms: {env.command_manager.active_terms}")
+    command = env.command_manager.get_command("velocity_height")
+    planar = env.command_manager.get_command("base_velocity")
+    if command.shape != (env.num_envs, 8):
+        raise RuntimeError(f"velocity_height must be strict 8D, got {tuple(command.shape)}")
+    if torch.count_nonzero(command[:, 5:8]).item() != 0:
+        raise RuntimeError("non-jumping migration requires the final three command fields to remain zero")
+    expected_planar = torch.stack((command[:, 0], torch.zeros_like(command[:, 0]), command[:, 1]), dim=1)
+    if not torch.equal(planar, expected_planar):
+        raise RuntimeError("base_velocity is not an exact [vx, 0, yaw] view of velocity_height")
+    if torch.count_nonzero(command[:, 2:4]).item() != 0:
+        raise RuntimeError("pitch/roll commands must remain zero while command-driven orientation rewards are deferred")
+    if bool(torch.any((command[:, 4] < 0.20) | (command[:, 4] > 0.32))):
+        raise RuntimeError("sampled height command is outside [0.20, 0.32] m")
+    wheel_budget = 0.06 * 45.0 * 0.9
+    wheel_linear = torch.stack((command[:, 0] - 0.20 * command[:, 1], command[:, 0] + 0.20 * command[:, 1]))
+    if float(wheel_linear.abs().max().item()) > wheel_budget + 1.0e-6:
+        raise RuntimeError("sampled command exceeds the configured differential-drive wheel-speed budget")
+
+    expected_rewards = {
+        "track_lin_vel_xy_exp": official_mdp.track_lin_vel_xy_exp,
+        "track_ang_vel_z_exp": official_mdp.track_ang_vel_z_exp,
+        "lin_vel_z_l2": official_mdp.lin_vel_z_l2,
+        "ang_vel_xy_l2": official_mdp.ang_vel_xy_l2,
+        "joint_torques_l2": official_mdp.joint_torques_l2,
+        "joint_acc_l2": official_mdp.joint_acc_l2,
+        "action_rate_l2": official_mdp.action_rate_l2,
+        "flat_orientation_l2": official_mdp.flat_orientation_l2,
+        "undesired_base_contact": official_mdp.undesired_contacts,
+    }
+    if set(env.reward_manager.active_terms) != set(expected_rewards):
+        raise RuntimeError(f"unexpected reward terms: {env.reward_manager.active_terms}")
+    for name, expected_func in expected_rewards.items():
+        actual_func = env.reward_manager.get_term_cfg(name).func
+        if actual_func is not expected_func:
+            raise RuntimeError(f"reward {name} is not wired to the IsaacLab official function")
+
+    fixed_robot = SimpleNamespace(
+        data=SimpleNamespace(
+            root_lin_vel_b=torch.stack((planar[:, 0], planar[:, 1], torch.zeros_like(planar[:, 0])), dim=1),
+            root_ang_vel_b=torch.stack(
+                (torch.zeros_like(planar[:, 0]), torch.zeros_like(planar[:, 0]), planar[:, 2]), dim=1
+            ),
+        )
+    )
+    fixed_env = SimpleNamespace(scene={"robot": fixed_robot}, command_manager=env.command_manager)
+    matched_linear = official_mdp.track_lin_vel_xy_exp(fixed_env, std=0.5, command_name="base_velocity")
+    matched_yaw = official_mdp.track_ang_vel_z_exp(fixed_env, std=0.5, command_name="base_velocity")
+    if not torch.allclose(matched_linear, torch.ones_like(matched_linear), atol=1.0e-6, rtol=0.0):
+        raise RuntimeError(f"fixed-state linear tracking reward should be one, got {matched_linear}")
+    if not torch.allclose(matched_yaw, torch.ones_like(matched_yaw), atol=1.0e-6, rtol=0.0):
+        raise RuntimeError(f"fixed-state yaw tracking reward should be one, got {matched_yaw}")
+
+    expected_terminations = {
+        "time_out": official_mdp.time_out,
+        "bad_orientation": official_mdp.bad_orientation,
+        "base_contact": official_mdp.illegal_contact,
+    }
+    if set(env.termination_manager.active_terms) != set(expected_terminations):
+        raise RuntimeError(f"unexpected termination terms: {env.termination_manager.active_terms}")
+    for name, expected_func in expected_terminations.items():
+        if env.termination_manager.get_term_cfg(name).func is not expected_func:
+            raise RuntimeError(f"termination {name} is not wired to the IsaacLab official function")
+
+    if env.curriculum_manager.active_terms != ["flat_velocity_and_push"]:
+        raise RuntimeError(f"unexpected curriculum terms: {env.curriculum_manager.active_terms}")
+    curriculum_cfg = env.curriculum_manager.cfg.flat_velocity_and_push
+    original_counter = env.common_step_counter
+    env.common_step_counter = 2000 * 64
+    curriculum_cfg.func(env, torch.arange(env.num_envs, device=env.device), **curriculum_cfg.params)
+    command_cfg = env.command_manager.get_term("velocity_height").cfg
+    if command_cfg.lin_vel_x_range != (-2.4, 2.4) or command_cfg.ang_vel_yaw_range != (-12.0, 12.0):
+        raise RuntimeError("velocity curriculum did not reach the final stage at policy iteration 2000")
+    push_range = env.event_manager.get_term_cfg("push_robot").params["velocity_range"]
+    if push_range != {"x": (-0.3, 0.3), "y": (-0.3, 0.3)}:
+        raise RuntimeError(f"push curriculum did not reach iteration-2000 stage: {push_range}")
+    env.common_step_counter = original_counter
+    curriculum_cfg.func(env, torch.arange(env.num_envs, device=env.device), **curriculum_cfg.params)
+
+
 def _sample_metrics(robot: Articulation, sensor: ContactSensor, passive_ids: list[int]) -> dict[str, float]:
     tensors = {
         "joint_pos": robot.data.joint_pos,
@@ -338,6 +423,7 @@ def main() -> int:
         policy_ids, passive_ids = _validate_topology_and_control(unwrapped, robot)
         _validate_reset(robot, observation)
         _validate_delayed_action_contract(unwrapped)
+        _validate_mdp_contract(unwrapped)
 
         zero_peaks: dict[str, float] = {}
         zero_action = torch.zeros((ARGS.num_envs, 6), device=unwrapped.device)
@@ -398,7 +484,8 @@ def main() -> int:
         print(
             f"[serialleg-task-smoke] task={ARGS.task} device={unwrapped.device} "
             f"gpu_buffers={'compact' if ARGS.compact_gpu_buffers else 'default'} "
-            f"gym_make=true reset=true rollout=true bodies={robot.num_bodies} dofs={robot.num_joints}",
+            f"gym_make=true reset=true mdp_contract=true fixed_state_rewards=true rollout=true "
+            f"bodies={robot.num_bodies} dofs={robot.num_joints}",
             flush=True,
         )
         print(

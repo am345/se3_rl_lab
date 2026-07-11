@@ -61,17 +61,11 @@ def projected_gravity_obs(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> 
 
 
 def _velocity_height_command(env: ManagerBasedRLEnv, robot: Any) -> torch.Tensor:
-    """Return the strict 8D command, or a transitional zero command if no term exists.
-
-    Command migration belongs to the next migration phase.  The zero fallback is
-    intentionally limited to an absent command manager or absent
-    ``velocity_height`` term so the current skeleton remains runnable.  Once the
-    named term exists, a wrong dimension is a hard contract error.
-    """
+    """Return the required strict 8D ``velocity_height`` command."""
     manager = getattr(env, "command_manager", None)
     active_terms = tuple(getattr(manager, "active_terms", ())) if manager is not None else ()
     if manager is None or "velocity_height" not in active_terms:
-        return robot.data.joint_pos.new_zeros((robot.data.joint_pos.shape[0], 8))
+        raise RuntimeError("velocity_height command term is required by the SerialLeg observation contract")
     command = manager.get_command("velocity_height")
     if command.ndim != 2 or command.shape != (robot.data.joint_pos.shape[0], 8):
         raise ValueError(

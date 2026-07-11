@@ -151,10 +151,10 @@ def test_layout_metadata_is_contiguous_and_exact() -> None:
     ]
 
 
-def test_absent_command_term_uses_only_transitional_zero_fallback() -> None:
+def test_absent_command_term_fails_hard_after_command_migration() -> None:
     env, robot_cfg, *_ = _fixture(None)
-    assert torch.equal(obs.commands_obs(env, robot_cfg), torch.zeros(2, 5))
-    assert torch.equal(obs.jump_commands_obs(env, robot_cfg), torch.zeros(2, 3))
+    with pytest.raises(RuntimeError, match="velocity_height command term is required"):
+        obs.commands_obs(env, robot_cfg)
 
 
 def test_existing_command_term_with_wrong_dimension_fails_hard() -> None:
