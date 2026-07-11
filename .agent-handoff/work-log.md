@@ -1,9 +1,15 @@
 # Current Work Log
 
+## 2026-07-11 — PPO rollout 改为 24 steps
+
+- Config: 按用户要求将 `PPORunnerCfg.num_steps_per_env` 从 64 改为 24，并同步将 command/push curriculum 的 `steps_per_policy_iteration` 改为 24，保持课程阶段仍按 PPO iteration 计数。
+- Runtime validation: 远端 4-env CPU/headless 完成 24 steps/env、总计 96 samples 和 1 PPO update，退出 0；actor/critic 仍为 34D/40D，9 个官方 reward 与 curriculum 正常加载。
+- Scope: README 和 handoff 已同步；未修改资产/YAML/USD、奖励权重、PPO 其他超参数或目标规模 PhysX capacity。
+
 ## 2026-07-11 — Feed-forward MLP/PPO 与 checkpoint round-trip
 
 - Policy: 按用户决定移除 GRU 迁移方向，`rsl_rl_ppo_cfg.py` 改用新版分离式 `RslRlMLPModelCfg`；actor/critic 均为 `[512,256,128]` + ELU，actor 34D/normalization off/scalar Gaussian std 1，critic 40D/empirical normalization on。
-- Runner/PPO: rollout 固定 64 steps 以对齐 curriculum；默认 5000 iterations、每 500 保存。PPO 对齐 Kyber 基础值：clip `0.2`、entropy `0.01`、5 epochs、4 mini-batches、adaptive lr `1e-3`、gamma/lam `0.99/0.95`、KL `0.01`、grad norm `1.0`。
+- Runner/PPO: 本次初始实现使用 64-step rollout 对齐 curriculum，后续已按上方新记录改为 24；默认 5000 iterations、每 500 保存。PPO 对齐 Kyber 基础值：clip `0.2`、entropy `0.01`、5 epochs、4 mini-batches、adaptive lr `1e-3`、gamma/lam `0.99/0.95`、KL `0.01`、grad norm `1.0`。
 - Runtime validation: 远端 4-env CPU simulation 完成 256 steps 和 1 PPO update，模型结构与 normalization 实际解析正确并生成 `model_0.pt`；第二次训练成功加载该 checkpoint 并继续完成 1 update。
 - Docs/scope: README 和 handoff 已记录 MLP/PPO 合同、验证命令、旧 GRU checkpoint 不兼容及下一步；未改资产/YAML/USD，未做目标规模 CUDA 训练或长 rollout。
 

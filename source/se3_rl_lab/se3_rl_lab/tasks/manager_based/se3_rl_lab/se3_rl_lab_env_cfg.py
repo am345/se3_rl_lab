@@ -330,7 +330,7 @@ class CurriculumCfg:
         params={
             "command_name": "velocity_height",
             "push_event_name": "push_robot",
-            "steps_per_policy_iteration": 64,
+            "steps_per_policy_iteration": 24,
             "velocity_stages": _VELOCITY_STAGES,
             "push_stages": _PUSH_STAGES,
         },

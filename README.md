@@ -55,11 +55,11 @@ command 默认保持关闭，其 3 个 jump slots 为零，不接入跳跃奖励
 - actor 使用 scalar Gaussian distribution，initial standard deviation 为 `1.0`；
 - actor observation normalization 关闭，保持部署输入合同；critic normalization 开启，以处理原始 wheel contact force 与其他 privileged state 的尺度差异；
 - 不堆叠 observation history；第一版保持单帧 34D/40D，不引入 recurrent hidden state 或 BPTT；
-- rollout 为每环境 64 steps，与现有 command/push curriculum 的 `steps_per_policy_iteration=64` 对齐；
+- rollout 为每环境 24 steps，与现有 command/push curriculum 的 `steps_per_policy_iteration=24` 对齐；
 - PPO 使用 clipped value loss、clip `0.2`、entropy `0.01`、5 epochs、4 mini-batches、adaptive `1e-3` learning rate、`gamma=0.99`、`lam=0.95`、target KL `0.01` 和 max grad norm `1.0`；
 - 默认训练上限 5000 iterations，每 500 iterations 保存 checkpoint。训练 smoke 应通过 CLI 临时覆盖 iterations，不修改基线配置。
 
-最小训练与恢复 smoke 已在 4 个 CPU simulation environments 上各完成一次 64-step PPO update：
+当前 24-step 基线已在 4 个 CPU simulation environments 上完成一次 96-sample PPO update；此前的 64-step 基线也已完成 checkpoint save/load round-trip：
 
 ```bash
 OMNI_KIT_ACCEPT_EULA=YES .venv/bin/python -u scripts/rsl_rl/train.py --task SerialLeg-Flat-ClosedChain-v0 --num_envs 4 --device cpu --headless --max_iterations 1 --run_name mlp_smoke
