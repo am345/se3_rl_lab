@@ -43,7 +43,7 @@
 - [x] 迁移 34D actor / 40D critic observation，并增加布局/数值/virtual-root 隔离测试和 CPU/CUDA task shape gate。
 - [x] 迁移 flat `velocity_height` commands、基础 events/domain randomization、terminations 和非跳跃 curriculum；已移除 transitional fallback，严格保持 8D command，pitch/roll 与 jump 3D 当前为零。
 - [x] 只配置 IsaacLab 官方 manager-based locomotion 基础 rewards，并用固定状态、CPU/CUDA 1/4 环境短 rollout 验证迁移后的基本训练链路。
-- [x] 迁移 feed-forward RSL-RL MLP/PPO cfg：分离 actor/critic obs-group mapping、`[512,256,128]` ELU、actor normalization off、critic normalization on、64-step rollout；4-env 最小 PPO update 与 checkpoint save/load round-trip 已通过，不使用 GRU/BPTT。
+- [x] 迁移 feed-forward RSL-RL MLP/PPO cfg：分离 actor/critic obs-group mapping、`[512,256,128]` ELU、actor normalization off、critic normalization on、24-step rollout；当前 4-env/96-sample 最小 PPO update 已通过，此前同结构 checkpoint save/load round-trip 已通过，不使用 GRU/BPTT。
 - [ ] 在目标 CUDA env count 下完成短训练与有策略控制的长 rollout；先定标 PhysX contact/pair buffers，再记录吞吐、显存、termination 分布、loop residual 与 virtual-root drift。
 - [ ] finetune 阶段再评估并适配旧 flat 自定义奖励；当前不迁移 command-driven 高度、分段/联合跟踪、轮腿专属 penalty/gating 或任何跳跃奖励/事件/curriculum。
 - [ ] 低优先级/finetune：重新评估 command observation normalization。当前 legacy scale 会令最终 `vx=±2.4 m/s` 映射为 `±4.8`，且 height 未中心化；若修改，必须同步训练、play、deploy/sim2sim 与 checkpoint 兼容策略。

@@ -2,6 +2,7 @@
 
 | Date | Command/Check | Result | Notes |
 | --- | --- | --- | --- |
+| 2026-07-11 | remote Ruff check/format, `git diff --check`; `train.py --task SerialLeg-Flat-ClosedChain-v0 --num_envs 4 --device cpu --headless --max_iterations 1 --run_name mlp_24step_smoke` | passed | `num_steps_per_env=24` 与 curriculum `steps_per_policy_iteration=24` 同步；实际采样 96 steps、完成 1 PPO update并退出 0，actor/critic 保持 34D/40D。最初本机 `python -m py_compile` 因 Windows 无 `python` 命令退出 9009，改由项目指定远端 `.venv` 完成真实运行时验证。 |
 | 2026-07-11 | local/remote `git hash-object` for MLP config, README and 7 handoff docs; local/remote `git status --short` | passed | 9 个目标文件哈希逐项一致，远端改动集合与本地一致。首次把远端 bash loop 嵌入 PowerShell 的组合命令因引号错误退出 1，改为直接列路径后通过；未修改文件或影响 runtime。 |
 | 2026-07-11 | local `py_compile`; remote Ruff format/check; `git diff --check` for MLP config/docs | passed | `rsl_rl_ppo_cfg.py` 语法、固定环境格式/lint 与 workspace whitespace 均通过。 |
 | 2026-07-11 | `train.py --task SerialLeg-Flat-ClosedChain-v0 --num_envs 4 --device cpu --headless --max_iterations 1 --run_name mlp_smoke` | passed | 实际解析 actor `34→512→256→128→6` + Identity、critic `40→512→256→128→1` + EmpiricalNormalization；采样 256 steps，完成 1 PPO update，mean value loss `0.0147`、surrogate loss `-0.0033`，生成 `model_0.pt`。 |
