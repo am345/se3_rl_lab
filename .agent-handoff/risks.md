@@ -4,9 +4,14 @@
 
 - 双 virtual-root URDF、schema-v3 contract、fixed-tendon USD 与 task runtime 已统一，无本轮 CPU/runtime blocker。
 - `SerialLeg-Flat-ClosedChain-v0` 的 CPU 与 compact-buffer CUDA 单环境 `gym.make/reset/step` gate 均已通过，无已知 task 逻辑 blocker。
-- 默认 CUDA PhysX capacity 在当前 GPU 上同时运行的 Kyber 4096-env 训练占用 `5300 MiB` 时仍会 OOM；失败为 `mGpuContactPairsDev` 预分配 `671088640 bytes`，发生于 rollout 前。`--compact-gpu-buffers` 单环境通过，但这些 capacity 不可未经定标直接用于大规模训练。
+- 默认 CUDA PhysX capacity 曾在同卡并行 Kyber 4096-env 训练占用 `5300 MiB` 时因 `mGpuContactPairsDev` 预分配 `671088640 bytes` 于 rollout 前 OOM；GPU 空闲后已实测 SerialLeg 4096-env 默认 capacity 完成 1 PPO update。并行负载下仍有 OOM 风险，运行中峰值显存与长训练余量尚未定标。
 
 ## Current Risks
+
+- Rerun 固定为 `0.20.3`：新版 `0.31.4` 要求 NumPy 2，与 IsaacLab 0.54.4 的 NumPy `<2` 冲突。升级前必须重新验证 uv dependency split 和 `.rrd` API，不能单独抬版本。
+- 当前 `flat-basic` eval 使用 1 env/固定 seed 47，默认六个 scenario；适合 checkpoint 回归和 finetune A/B baseline，但不能替代多 seed 统计。eval 是显式 CLI worker，不会训练期自动并发，以避免与 4096-env 训练争抢 GPU。
+- MP4 依赖评估时创建 54 mesh + 2 cylinder render-only copies；资产 collision topology 改变会硬失败并要求同步更新 gate。副本不参与物理，runtime USD 未改。评估副本必须保持在独立 world-space preview 树并从 body tensor 逐步同步；不要重新挂到 replicated articulation body prim 下，否则录制画面可能与物理状态脱节。
+- eval debug markers 在 Fabric 下会触发 point-instancer prototype mismatch 并错位，因此 worker 明确 `use_fabric=False`；该设置只影响 1-env 录制，不得复制到 4096-env 训练配置。
 
 - `WIN-46S653M0DI0` 的默认运行依赖本机 SSH alias `se3_rl_lab_gpufree`。仓库不保存实际 endpoint、密码、私钥或 TURN 凭据；若 alias 缺失，先检查本机 `%USERPROFILE%\.ssh\config`，不要把凭据补进 tracked 文档。
 - 远端 GitHub 代理依赖至少一条活跃 SSH reverse forward：本机 `127.0.0.1:7897` → 远端 `127.0.0.1:7890`。旧 VS Code/SSH 连接可能已经占用 7890；这通常不是异常。若所有 SSH 连接断开，远端 `.bashrc` 仍会保留 proxy 变量但端口无 listener，GitHub 请求会超时。

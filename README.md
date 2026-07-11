@@ -64,7 +64,24 @@ command 默认保持关闭，其 3 个 jump slots 为零，不接入跳跃奖励
 ```bash
 OMNI_KIT_ACCEPT_EULA=YES .venv/bin/python -u scripts/rsl_rl/train.py --task SerialLeg-Flat-ClosedChain-v0 --num_envs 4 --device cpu --headless --max_iterations 1 --run_name mlp_smoke
 OMNI_KIT_ACCEPT_EULA=YES .venv/bin/python -u scripts/rsl_rl/train.py --task SerialLeg-Flat-ClosedChain-v0 --num_envs 4 --device cpu --headless --max_iterations 1 --run_name mlp_resume_smoke --resume --load_run <run-directory> --checkpoint model_0.pt
+DISPLAY=:20 OMNI_KIT_ACCEPT_EULA=YES .venv/bin/python -u scripts/rsl_rl/play.py --task SerialLeg-Flat-ClosedChain-v0 --num_envs 1 --device cuda:0 --show_colliders --checkpoint <checkpoint-path>
 ```
+
+SerialLeg runtime USD 是 collision-only；GUI 回放时使用 `--show_colliders` 将 PhysX Colliders 设置为 `All`，否则普通渲染视口中机器人不可见。
+
+## 实验工具链
+
+仓库提供统一的 `se3rl` CLI，用于一键训练/恢复、run 与 checkpoint 解析、Isaac Eval MP4、固定评估套件、telemetry、Rerun 和 Markdown 对比报告：
+
+```bash
+uv run se3rl runs
+OMNI_KIT_ACCEPT_EULA=YES uv run se3rl train --envs 4096 --iterations 500 --run-name flat_baseline
+OMNI_KIT_ACCEPT_EULA=YES uv run se3rl eval <run> --checkpoint latest
+DISPLAY=:20 OMNI_KIT_ACCEPT_EULA=YES uv run se3rl play <run> --checkpoint best
+uv run se3rl compare <metrics-a.json> <metrics-b.json> --output reports/comparison.md
+```
+
+Isaac Eval 会为 collision-only USD 创建不参与物理的 render preview，因此 MP4 中机器人可见；视频同时显示绿色目标速度箭头和蓝色实际速度箭头。同一次 rollout 还会生成 metrics JSON、逐步 telemetry、Rerun `.rrd` 和 Markdown 报告。完整目录合同、命令和 finetune 前 gate 见 [实验工具链文档](docs/experiment_tooling.md)。
 
 ## SerialLeg 机器人配置
 

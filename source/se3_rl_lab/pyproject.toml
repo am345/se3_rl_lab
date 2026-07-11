@@ -15,7 +15,11 @@ dependencies = [
     "isaaclab-tasks",
     "psutil",
     "pyyaml>=6.0,<7",
+    "rerun-sdk==0.20.3",
 ]
+
+[project.scripts]
+se3rl = "se3_rl_lab.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]

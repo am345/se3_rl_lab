@@ -6,7 +6,7 @@
 - [x] 用户确认接受 NVIDIA Omniverse EULA 后，用 `OMNI_KIT_ACCEPT_EULA=YES` 验证 IsaacSim 可启动，并用 registry probe 确认 `Template-Se3-Rl-Lab-v0` 注册。
 - [x] 用 CPU/headless zero agent 验证官方模板环境可创建并进入 simulation loop。
 - [x] 重新验证完整 SerialLeg CUDA env：默认 capacity 在并行 Kyber 训练占用 5.3 GiB 时仍因 640 MiB contact buffer 预分配 OOM；单环境 compact capacities 通过完整 rollout。
-- [ ] 在 GPU 空闲时复测默认 CUDA capacity，并对未来目标 env count 定标 contact/pair buffers；不直接复用单环境 compact 值。
+- [x] 在 GPU 空闲时复测默认 CUDA capacity：4096-env 使用默认 buffers 完成 1 PPO update；未复用单环境 compact 值。长训练峰值显存与并行负载余量继续在目标训练项验收。
 - [x] 用户检查并确认 URDF-only 双 virtual-root candidate 的 topology、命名、窄限位和 inertial split。
 - [x] 更新 `robot_config.yaml` / `serialleg_contract.py` 为 schema v3 的 13-link/12-joint contract，并在 USD converter author 两条 PhysX fixed tendon；root `gearing=0` / `forceCoefficient=0` 已被 Isaac Sim 5.1 接受。
 - [x] fixed-tendon USD 通过静态 gate、CPU virtual-root drift/coupled range/free-space、external-loop A/B 和完整 Gym task active-control gates。
@@ -44,7 +44,8 @@
 - [x] 迁移 flat `velocity_height` commands、基础 events/domain randomization、terminations 和非跳跃 curriculum；已移除 transitional fallback，严格保持 8D command，pitch/roll 与 jump 3D 当前为零。
 - [x] 只配置 IsaacLab 官方 manager-based locomotion 基础 rewards，并用固定状态、CPU/CUDA 1/4 环境短 rollout 验证迁移后的基本训练链路。
 - [x] 迁移 feed-forward RSL-RL MLP/PPO cfg：分离 actor/critic obs-group mapping、`[512,256,128]` ELU、actor normalization off、critic normalization on、24-step rollout；当前 4-env/96-sample 最小 PPO update 已通过，此前同结构 checkpoint save/load round-trip 已通过，不使用 GRU/BPTT。
-- [ ] 在目标 CUDA env count 下完成短训练与有策略控制的长 rollout；先定标 PhysX contact/pair buffers，再记录吞吐、显存、termination 分布、loop residual 与 virtual-root drift。
+- [x] 完成 finetune 前两阶段工具链：`se3rl` train/resume/play/eval/record/runs/compare、manifest/status、best checkpoint、collision-only MP4、flat-basic metrics/telemetry、Rerun 和 Markdown 报告，含真实 train/eval gate 与文档。
+- [ ] 扩展 `flat-basic` 为多 seed 聚合，并继续训练/评估更高 velocity stages 和 push curriculum；当前 model_499 只到 velocity stage 1、push stage 0。
 - [ ] finetune 阶段再评估并适配旧 flat 自定义奖励；当前不迁移 command-driven 高度、分段/联合跟踪、轮腿专属 penalty/gating 或任何跳跃奖励/事件/curriculum。
 - [ ] 低优先级/finetune：重新评估 command observation normalization。当前 legacy scale 会令最终 `vx=±2.4 m/s` 映射为 `±4.8`，且 height 未中心化；若修改，必须同步训练、play、deploy/sim2sim 与 checkpoint 兼容策略。
 - [x] 按用户最新要求取消 handoff 的 `.gitignore` 规则，将 `AGENT_HANDOFF.md`、`AGENT_SESSION_PROMPTS.md` 与 `.agent-handoff/*.md` 纳入 Git，支持跨电脑恢复；原“本地私有”策略已废止。
