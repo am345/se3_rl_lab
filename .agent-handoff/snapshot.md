@@ -5,8 +5,8 @@
 - Last updated: 2026-07-11
 - Last agent: Codex
 - Workspace root: 本机 `D:\RoboMaster\se3_rl_lab`；当 `hostname` 为 `WIN-46S653M0DI0` 时，默认运行目标为 SSH alias `se3_rl_lab_gpufree`，远端项目根为 `/root/gpufree-data/se3-workspace/se3_rl_lab`
-- Current objective: 迁移 SerialLeg flat 的非跳跃基础训练链路，先用 IsaacLab 官方 locomotion rewards 验证 Isaac Sim 行为，再在 finetune 阶段适配自定义奖励。
-- Current status: delayed 6D action、34D/40D observation、非跳跃 8D `velocity_height`、基础 events/domain randomization、terminations/curriculum、IsaacLab 官方 locomotion rewards 与 feed-forward MLP/PPO 已实现；CPU/compact-CUDA 单/4 环境短 rollout、4 环境最小 PPO update 和 checkpoint save/load round-trip 均通过。旧 flat 自定义奖励仍推迟到 finetune，jump command 关闭。依赖配置使用 portable sibling paths `../IsaacLab/source/...`；项目分支/SHA/clean 状态以实时 `git status -sb` / `git log -1` 为准，远端 IsaacLab 固定为 `b4c3210`。
+- Current objective: 已完成 SerialLeg flat 基础训练与 finetune 前两阶段实验工具链；下一阶段使用固定 eval baseline 开始适配旧 flat 自定义奖励。
+- Current status: 4096-env 基础策略完成 500 PPO iterations/49,152,000 steps并学会 curriculum stage 1 平地运动；`se3rl` 已提供一键 train/resume/play/eval/record/runs/compare、run manifest/status、best checkpoint、collision-only MP4、flat-basic metrics/telemetry、Rerun 和 Markdown 报告。debug-vis collision preview 已显式同步刚体位姿，速度箭头已放大；录制相机现按 root yaw 保持侧后方距离并逐步跟随平移/转向，完整 24 秒重录及抽帧通过。旧 flat 自定义奖励仍未迁移，jump command 关闭。依赖配置使用 portable sibling paths `../IsaacLab/source/...`；Rerun 固定 `0.20.3` 以兼容 IsaacLab NumPy `<2`；远端 IsaacLab 固定 `b4c3210`。
 - Delayed-action contract: action order 由 `SERIALLEG_CONTRACT.policy_joint_order` 派生；腿为 position target、scale `0.25 rad`，轮为 velocity target、scale `45 rad/s`。每侧 action 使用 `[front joint, active tendon coordinate]`，右侧 tendon coefficients 已按 policy order 重排为 `(-1,+1)`；active target clamp 为 `[lower-0.20, upper]`。
 - Delay/reset contract: 默认 `4–6 ms` 在 `physics_dt=0.005 s` 下逐环境量化为 1 physics step；FIFO 在 physics step 更新，partial reset 只清目标 env 的 raw/delayed/FIFO 并重采样 delay。
 - Observation contract: actor 精确 34D、critic 为 actor 34D + privileged 6D = 40D；显式只索引 4 policy leg + 2 wheel joints，passive 与 virtual-root joints 不进入 policy observation。布局和 scale 位于 `mdp/observations.py`。
@@ -15,13 +15,13 @@
 - Command normalization decision: 当前继续保留旧 observation scale `(2.0, 0.25, 5.0, 5.0, 5.0)` 以维持 legacy policy/checkpoint 接口；是否按最终 command range 做中心化归一化已推迟到 finetune 阶段，列为低优先级，不阻塞当前迁移。
 - Policy contract: 明确使用非循环 `RslRlMLPModelCfg`；actor/critic hidden dims 均为 `[512,256,128]`、ELU，actor 读取 34D 且不做 normalization，critic 读取 40D 并使用 empirical normalization；actor scalar Gaussian 初始 std `1.0`。不堆叠 history、不使用 GRU/LSTM/BPTT；每环境 rollout 为 24 steps，curriculum 的 `steps_per_policy_iteration` 同步为 24。
 - Environment/reward contract: startup 随机化 material、base mass/COM、policy actuator gains；reset 随机 xy/yaw 并恢复 standing joints；5–6 s interval push 由非跳跃课程渐增。termination 为官方 `time_out`、`bad_orientation`、`illegal_contact(base_link)`。9 个 reward 全部直接引用 IsaacLab 官方函数：linear/yaw tracking、vertical/roll-pitch velocity、policy torque/acceleration、action rate、flat orientation、base undesired contact；没有配置旧自定义 reward。
-- Validation: 远端 Ruff/format/diff check 通过，observation pytest `4 passed`；manager/command/reward/termination/curriculum identity、课程终态和固定状态 tracking reward 检查通过。CPU 1/4-env 8+8 与 compact-CUDA 1/4-env 4+4 短 rollout 均退出 0，actor/critic 保持 `(34)/(40)`，passive effort 为 0。当前 24-step 基线的 4-env CPU simulation 完成 96 steps/1 PPO update；此前 64-step 基线完成 256 steps/1 update、`model_0.pt` 保存与 resume round-trip。
+- Validation: 原基础 gates 与 4096-env/500-iteration 训练通过。工具链 Ruff/format/diff、`uv lock --check`、纯工具 pytest `3 passed`；`se3rl train` 64-env/1-update 通过并生成 manifest/status；`se3rl eval model_499` 生成 150-step MP4、metrics、telemetry、59KB Rerun、报告和 best status，preview 为 54 meshes/2 cylinders，抽帧确认机器人可见。
 - Runtime peaks: CPU 1-env zero/controlled loop `3.857e-04/2.114e-04 m`，CPU 4-env `4.624e-04/2.397e-04 m`；compact-CUDA 1-env `4.181e-04/2.361e-04 m`，4-env `4.056e-04/2.548e-04 m`，均低于 task `1e-3 m` gate。
-- Active files: `README.md`、`scripts/{smoke_serialleg_task,test_serialleg_observations}.py`、`source/.../se3_rl_lab_env_cfg.py`、`source/.../agents/rsl_rl_ppo_cfg.py`、`source/.../mdp/{__init__,commands,curriculums,observations}.py` 与 `.agent-handoff/{snapshot,workspace,decisions,work-log,validation,backlog,risks}.md`。资产/YAML/USD 未改。
-- Blockers: 无当前环境 blocker。GPUFree 已分配单张 RTX 4090 24GB，PyTorch CUDA 与 Isaac Sim task smoke 通过；目标多环境训练的 PhysX capacity 仍需按 backlog 定标。
+- Active files: `README.md`、`docs/experiment_tooling.md`、`scripts/rsl_rl/play.py`、`scripts/test_experiment_tools.py`、`source/se3_rl_lab/{pyproject.toml,se3_rl_lab/{__init__,cli}.py}`、`source/.../{tools,isaac_eval}/`、`uv.lock` 与相关 handoff 文档。资产/YAML/USD 未改。
+- Blockers: 无当前环境 blocker。4096-env 默认 capacity、工具链真实 train/eval 和 collision-only MP4 均通过。
 - Immediate next actions:
-  - 用有策略控制的短训练/长 rollout 验收 termination、push curriculum 和 fixed-tendon/external-loop 稳定性；不要用长零动作 rollout 代替。
-  - GPU 空闲后做默认 capacity、多环境与长 rollout 定标。
+  - 以 `model_499.pt` 的 `flat-basic` metrics/report 为 baseline，设计并逐项接入 legacy flat finetune reward profiles。
+  - finetune A/B 必须用同一 suite 评估；随后扩展多 seed、velocity 后续 stage 与 push robustness。
 - Open questions:
   - UNKNOWN: fixed tendon + external loops 在主动 delayed control、CUDA 大规模多环境和长训练下的稳定性；当前只完成 CPU/compact-CUDA 最多 4 环境短 gate。
   - LOW: finetune 时是否将 command observation 改为按最终范围归一化，并制定旧 checkpoint 的适配/重训策略。

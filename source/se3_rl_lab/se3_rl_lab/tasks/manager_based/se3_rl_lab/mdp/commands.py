@@ -11,8 +11,11 @@ from typing import TYPE_CHECKING
 
 import torch
 
+import isaaclab.utils.math as math_utils
 from isaaclab.assets import Articulation
 from isaaclab.managers import CommandTerm, CommandTermCfg
+from isaaclab.markers import VisualizationMarkers, VisualizationMarkersCfg
+from isaaclab.markers.config import BLUE_ARROW_X_MARKER_CFG, GREEN_ARROW_X_MARKER_CFG
 from isaaclab.utils import configclass
 
 if TYPE_CHECKING:
@@ -142,6 +145,37 @@ class VelocityHeightCommand(CommandTerm):
         )
         self._command[:, 5:8] = 0.0
 
+    def _set_debug_vis_impl(self, debug_vis: bool) -> None:
+        if debug_vis:
+            if not hasattr(self, "goal_vel_visualizer"):
+                self.goal_vel_visualizer = VisualizationMarkers(self.cfg.goal_vel_visualizer_cfg)
+                self.current_vel_visualizer = VisualizationMarkers(self.cfg.current_vel_visualizer_cfg)
+            self.goal_vel_visualizer.set_visibility(True)
+            self.current_vel_visualizer.set_visibility(True)
+        elif hasattr(self, "goal_vel_visualizer"):
+            self.goal_vel_visualizer.set_visibility(False)
+            self.current_vel_visualizer.set_visibility(False)
+
+    def _debug_vis_callback(self, event) -> None:
+        if not self.robot.is_initialized:
+            return
+        base_pos_w = self.robot.data.root_pos_w.clone()
+        base_pos_w[:, 2] += self.cfg.debug_arrow_height
+        desired_xy = torch.stack((self._command[:, 0], torch.zeros_like(self._command[:, 0])), dim=1)
+        desired_scale, desired_quat = self._resolve_xy_velocity_to_arrow(desired_xy)
+        actual_scale, actual_quat = self._resolve_xy_velocity_to_arrow(self.robot.data.root_lin_vel_b[:, :2])
+        self.goal_vel_visualizer.visualize(base_pos_w, desired_quat, desired_scale)
+        self.current_vel_visualizer.visualize(base_pos_w, actual_quat, actual_scale)
+
+    def _resolve_xy_velocity_to_arrow(self, xy_velocity: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        default_scale = self.cfg.goal_vel_visualizer_cfg.markers["arrow"].scale
+        arrow_scale = torch.tensor(default_scale, device=self.device).repeat(xy_velocity.shape[0], 1)
+        arrow_scale[:, 0] *= torch.linalg.norm(xy_velocity, dim=1) * self.cfg.debug_arrow_velocity_scale
+        heading_angle = torch.atan2(xy_velocity[:, 1], xy_velocity[:, 0])
+        zeros = torch.zeros_like(heading_angle)
+        arrow_quat = math_utils.quat_from_euler_xyz(zeros, zeros, heading_angle)
+        return arrow_scale, math_utils.quat_mul(self.robot.data.root_quat_w, arrow_quat)
+
 
 @configclass
 class VelocityHeightCommandCfg(CommandTermCfg):
@@ -163,6 +197,16 @@ class VelocityHeightCommandCfg(CommandTermCfg):
     diff_drive_half_track: float = 0.20
     diff_drive_max_wheel_speed: float = 45.0
     diff_drive_wheel_speed_fraction: float = 0.9
+    debug_arrow_height: float = 0.35
+    debug_arrow_velocity_scale: float = 3.0
+    goal_vel_visualizer_cfg: VisualizationMarkersCfg = GREEN_ARROW_X_MARKER_CFG.replace(
+        prim_path="/Visuals/Command/velocity_goal"
+    )
+    current_vel_visualizer_cfg: VisualizationMarkersCfg = BLUE_ARROW_X_MARKER_CFG.replace(
+        prim_path="/Visuals/Command/velocity_current"
+    )
+    goal_vel_visualizer_cfg.markers["arrow"].scale = (1.0, 0.18, 0.18)
+    current_vel_visualizer_cfg.markers["arrow"].scale = (1.0, 0.18, 0.18)
 
 
 class PlanarVelocityCommand(CommandTerm):

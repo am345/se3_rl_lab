@@ -3,12 +3,9 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""
-Python module serving as a project/extension template.
-"""
+"""SE3 RL Lab package.
 
-# Register Gym environments.
-from .tasks import *
-
-# Register UI extensions.
-from .ui_extension_example import *
+Isaac task registration is intentionally explicit via ``import se3_rl_lab.tasks``.
+Keeping this module lightweight lets experiment metadata, reports, and the ``se3rl``
+CLI run without bootstrapping Isaac Sim/Kit first.
+"""

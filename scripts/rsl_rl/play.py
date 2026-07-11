@@ -34,6 +34,12 @@ parser.add_argument(
     help="Use the pre-trained checkpoint from Nucleus.",
 )
 parser.add_argument("--real-time", action="store_true", default=False, help="Run in real-time, if possible.")
+parser.add_argument(
+    "--show_colliders",
+    action="store_true",
+    default=False,
+    help="Show all PhysX collision shapes in the viewport (useful for collision-only USD assets).",
+)
 # append RSL-RL cli arguments
 cli_args.add_rsl_rl_args(parser)
 # append AppLauncher cli args
@@ -65,8 +71,12 @@ import os
 import time
 
 import gymnasium as gym
+import se3_rl_lab.tasks  # noqa: F401
 import torch
 from rsl_rl.runners import DistillationRunner, OnPolicyRunner
+
+import carb
+import omni.physx.bindings._physx as physx_bindings
 
 from isaaclab.envs import (
     DirectMARLEnv,
@@ -91,8 +101,6 @@ from isaaclab_rl.utils.pretrained_checkpoint import get_published_pretrained_che
 import isaaclab_tasks  # noqa: F401
 from isaaclab_tasks.utils import get_checkpoint_path
 from isaaclab_tasks.utils.hydra import hydra_task_config
-
-import se3_rl_lab.tasks  # noqa: F401
 
 
 @hydra_task_config(args_cli.task, args_cli.agent)
@@ -135,6 +143,10 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
     # create isaac environment
     env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array" if args_cli.video else None)
+    if args_cli.show_colliders:
+        # Physics viewport menu values are: 0=None, 1=Selected, 2=All.
+        carb.settings.get_settings().set(physx_bindings.SETTING_DISPLAY_COLLIDERS, 2)
+        print("[INFO] PhysX collider visualization enabled for all collision shapes.")
 
     # convert to single-agent instance if required by the RL algorithm
     if isinstance(env.unwrapped, DirectMARLEnv):

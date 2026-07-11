@@ -66,6 +66,9 @@
 - `scripts/random_agent.py`: random-action dummy agent 验证入口。
 - `scripts/rsl_rl/train.py`: RSL-RL 训练入口。
 - `scripts/rsl_rl/play.py`: RSL-RL 回放入口。
+- `uv run se3rl`: 统一实验生命周期 CLI；train/resume/play/eval/record/runs/compare，详见 `docs/experiment_tooling.md`。
+- `source/se3_rl_lab/se3_rl_lab/isaac_eval/`: collision-only MP4、固定 suite 和 telemetry worker。
+- `source/se3_rl_lab/se3_rl_lab/tools/`: run metadata、报告和 Rerun 导出。
 - `source/se3_rl_lab/se3_rl_lab/tasks/manager_based/se3_rl_lab/__init__.py`: 当前 gym task 注册入口，task id 为 `SerialLeg-Flat-ClosedChain-v0`。
 - `source/se3_rl_lab/se3_rl_lab/tasks/manager_based/se3_rl_lab/se3_rl_lab_env_cfg.py`: 当前 ManagerBasedRLEnvCfg，使用预生成 USD；单环境 CPU/compact-CUDA task gate 已通过。
 - `source/se3_rl_lab/se3_rl_lab/tasks/manager_based/se3_rl_lab/agents/rsl_rl_ppo_cfg.py`: 当前 RSL-RL PPO 配置。

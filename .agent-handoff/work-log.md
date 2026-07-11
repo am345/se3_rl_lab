@@ -1,5 +1,58 @@
 # Current Work Log
 
+## 2026-07-11 — eval 录制相机跟随机器人
+
+- eval worker 新增逐控制步相机更新：以机器人 root yaw 旋转侧后方 offset，保持约 `2.4 m` 横向距离和 `0.57 m` 高差，target 始终指向 root。
+- 1 秒 × 6 scenarios 短测中对 forward 段 1.10s/1.90s 抽帧，机器人始终位于画面中央附近而地面网格发生相对移动；随后完整 24 秒 MP4/RRD 重录并覆盖本地交换目录。
+
+## 2026-07-11 — 放大 eval 速度 debug_vis 箭头
+
+- 将目标/实际速度箭头基准 scale 从 `(0.45, 0.06, 0.06)` 放大到 `(1.0, 0.18, 0.18)`，速度长度倍率从 `2.0` 提高到 `3.0`，离机器人高度从 `0.18 m` 提高到 `0.35 m`。
+- 先用 0.5 秒短测检查，再完成 4 秒 × 6 scenarios 重录；抽帧确认绿色/蓝色箭头在 1280×720 画面中清晰可辨，最终 MP4/RRD 已覆盖本地交换目录版本。
+
+## 2026-07-11 — 修复 debug-vis MP4 中机器人外壳静止
+
+- Diagnosis: telemetry 和新增的 `base_world_x/y` 证明策略与物理刚体正常移动；问题只发生在 render-only collision preview。副本原先作为 replicated articulation body prim 的子节点，未可靠继承 tensor-driven body transforms，因此视频里的外壳停在初始位置。
+- Fix: preview 改为独立 world-space Xform 树，保存每个 body 的 transform op，并在 rollout 每步从 `robot.data.body_pos_w/body_quat_w` 显式同步；不修改 collision-only USD，也不参与物理。
+- Result: 0.5 秒短测中前进段 0.55s/0.95s 抽帧确认外壳位置和姿态均变化；随后完整重录 4 秒 × 6 scenarios 的 MP4/RRD 并复制到本地交换目录。
+
+## 2026-07-11 — eval MP4 增加速度 debug_vis
+
+- `VelocityHeightCommand` 按 IsaacLab marker 合同新增绿色目标速度与蓝色实际速度箭头，默认训练不开启；eval worker 显式启用。
+- 为稳定录制 marker，eval-only 关闭 Fabric、固定 reset x/y/yaw=0 并使用侧视相机；训练仍保留 Fabric 和随机 reset。
+- 完整 24 秒 debug-vis MP4/RRD/metrics 已复制到 `D:\RoboMaster\se3_checkpoint_exchange\model_499_flat_basic_24s`，抽帧确认箭头可见。
+
+## 2026-07-11 — model_499 完整 flat-basic 录制
+
+- 使用 six-scenario、每场景 4 秒的完整 eval 录制 `model_499.pt`；生成 23.98 秒/1199 帧/1280×720 MP4 与同 rollout 的 334KB Rerun。
+- MP4、RRD、metrics 和 Markdown 报告已复制到本机 `D:\RoboMaster\se3_checkpoint_exchange\model_499_flat_basic_24s`，便于直接查看和交换。
+
+## 2026-07-11 — finetune 前两阶段实验工具链完成
+
+- Lifecycle: 新增 `se3rl` Python CLI，覆盖 train/resume/play/eval/record/runs/compare；run resolver 支持 path/name/唯一子串和 latest/best/iteration checkpoint，manifest/status 持久记录 Git/合同/训练/评估状态。
+- Isaac Eval: 独立 worker + `flat-basic` 六 scenario；collision-only robot 从 54 meshes/2 cylinders 创建 render-only copies，自动输出 MP4、metrics、逐步 telemetry、context 和 latest result，不改物理 USD。
+- Diagnostics: 同一次 rollout 生成 Rerun `.rrd`、单 checkpoint Markdown 和 compare report；统一 score 更新 best checkpoint。Rerun 固定 0.20.3，因 0.31.4/NumPy 2 与 IsaacLab NumPy `<2` 冲突。
+- Runtime gates: 64-env CLI train/1 update 通过并生成 manifest/status；model_499 完整 eval 生成全部产物，抽帧确认机器人可见；pure tests `3 passed`、Ruff/format/uv lock/diff checks 通过。
+- Docs/scope: 新增 `docs/experiment_tooling.md` 并更新 README；未实现 Viser/MuJoCo sim2sim，未修改资产/YAML/USD，未开始 legacy reward finetune。
+
+## 2026-07-11 — collision-only USD 策略回放可视化
+
+- Play CLI: `scripts/rsl_rl/play.py` 新增 `--show_colliders`；环境创建后将 PhysX `SETTING_DISPLAY_COLLIDERS` 设为 `2`（All），使 collision-only SerialLeg 在普通策略回放窗口中可见。
+- Runtime: 关闭旧的不可见 play，使用 `DISPLAY=:20`、1 env、CUDA 和 `model_499.pt` 重启；日志确认 collider visualization 与 checkpoint 加载，Isaac Sim GUI 常驻 PID `6622`。
+- Docs/validation: README 增加 collision-only play 命令和说明；远端 Ruff check/format 通过。
+
+## 2026-07-11 — 4096-env/500-iteration 平地训练
+
+- Runtime: 默认 PhysX capacity、4096 environments 完成 500 PPO iterations/49,152,000 steps，训练约 `470.93s`，最终迭代吞吐约 `110,765 steps/s`；运行中显存观测约 4.65 GiB，无 OOM 或异常退出。
+- Learning result: mean reward 从启动 gate 的 `0.19` 增至最终 `26.30`，最终 episode length `985.91/1000`；termination time-out/bad-orientation/base-contact 分别为 `0.9981/0.0016/0.0005`，线速度/偏航 tracking reward 为 `0.9382/0.4432`。
+- Artifact/scope: 保存 `model_499.pt`。500 轮仅到 velocity curriculum stage 1，push stage 仍为 0，因此可判定已学会当前课程范围的稳定平地运动，不能声称已通过最终高速范围、push robustness、长回放闭链 residual 或 sim2sim。
+
+## 2026-07-11 — 4096-env CUDA 默认容量短训练通过
+
+- Preflight: 远端 RTX 4090 空闲（约 24 GB 可用），数据盘剩余 29 GB，无并行训练进程；项目 clean `main@efa13d9`。
+- Runtime: 使用默认 PhysX capacity 直接启动 4096 environments，完成 24 steps/env、总计 98,304 samples 和 1 PPO update，退出 0；吞吐约 `35,871 steps/s`，生成约 4.44 MB `model_0.pt`。
+- Scope: 证明 GPU 空闲时 4096-env 默认容量可启动并完成短训练；未采集运行中峰值显存，也未完成多 iteration、push curriculum、长 rollout、termination 分布趋势或 fixed-tendon enabled/disabled A/B。
+
 ## 2026-07-11 — PPO rollout 改为 24 steps
 
 - Config: 按用户要求将 `PPORunnerCfg.num_steps_per_env` 从 64 改为 24，并同步将 command/push curriculum 的 `steps_per_policy_iteration` 改为 24，保持课程阶段仍按 PPO iteration 计数。
