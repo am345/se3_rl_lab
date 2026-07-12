@@ -44,12 +44,12 @@ joints:
       role: active
       profile: leg
       joints: [lf0_Joint, l_drive_bar_Joint, rf0_Joint, r_drive_bar_Joint]
-      action_scale: 40.0
+      action_scale: 0.25
     wheels:
       role: active
       profile: wheel
       joints: [l_wheel_Joint, r_wheel_Joint]
-      action_scale: 3.71
+      action_scale: 45.0
     closed_chain_passive:
       role: passive
       profile: linkage

@@ -6,10 +6,12 @@
 from pathlib import Path
 
 import isaaclab.sim as sim_utils
-from isaaclab.actuators import ImplicitActuatorCfg
+from isaaclab.actuators import DCMotorCfg, ImplicitActuatorCfg
 from isaaclab.assets import ArticulationCfg
 
+from .serialleg_actuators import TorqueSpeedCurveActuatorCfg
 from .serialleg_contract import SERIALLEG_CONTRACT
+from .serialleg_motors import DM8009P, M3508_C620_14
 
 SERIALLEG_ASSET_DIR = Path(__file__).resolve().parent / "serialleg"
 SERIALLEG_CLOSED_CHAIN_USD = SERIALLEG_ASSET_DIR / SERIALLEG_CONTRACT.runtime_usd
@@ -27,7 +29,7 @@ SERIALLEG_POLICY_ACTION_SCALE = {
 SERIALLEG_DEFAULT_JOINT_POS = SERIALLEG_CONTRACT.default_joint_positions
 
 
-def _actuator_cfg(group_name: str) -> ImplicitActuatorCfg:
+def _passive_actuator_cfg(group_name: str) -> ImplicitActuatorCfg:
     group = SERIALLEG_CONTRACT.actuator_groups[group_name]
     kwargs = {
         "joint_names_expr": list(group.joint_names),
@@ -38,6 +40,31 @@ def _actuator_cfg(group_name: str) -> ImplicitActuatorCfg:
     if group.velocity_limit_sim is not None:
         kwargs["velocity_limit_sim"] = group.velocity_limit_sim
     return ImplicitActuatorCfg(**kwargs)
+
+
+def _leg_actuator_cfg() -> DCMotorCfg:
+    group = SERIALLEG_CONTRACT.actuator_groups["legs"]
+    return DCMotorCfg(
+        joint_names_expr=list(group.joint_names),
+        effort_limit=DM8009P.rated_torque,
+        velocity_limit=DM8009P.no_load_speed,
+        saturation_effort=DM8009P.stall_torque,
+        effort_limit_sim=DM8009P.stall_torque,
+        stiffness=group.stiffness,
+        damping=group.damping,
+    )
+
+
+def _wheel_actuator_cfg() -> TorqueSpeedCurveActuatorCfg:
+    group = SERIALLEG_CONTRACT.actuator_groups["wheels"]
+    return TorqueSpeedCurveActuatorCfg(
+        joint_names_expr=list(group.joint_names),
+        effort_limit=M3508_C620_14.rated_torque,
+        effort_limit_sim=M3508_C620_14.stall_torque,
+        stiffness=group.stiffness,
+        damping=group.damping,
+        torque_speed_curve=M3508_C620_14.torque_speed_curve,
+    )
 
 
 SERIALLEG_CLOSED_CHAIN_CFG = ArticulationCfg(
@@ -66,9 +93,9 @@ SERIALLEG_CLOSED_CHAIN_CFG = ArticulationCfg(
         joint_vel={".*": 0.0},
     ),
     actuators={
-        group_name: _actuator_cfg(group_name)
-        for group_name, group in SERIALLEG_CONTRACT.actuator_groups.items()
-        if group.actuated
+        "legs": _leg_actuator_cfg(),
+        "wheels": _wheel_actuator_cfg(),
+        "closed_chain_passive": _passive_actuator_cfg("closed_chain_passive"),
     },
 )
 """SerialLeg closed-chain USD articulation configuration."""

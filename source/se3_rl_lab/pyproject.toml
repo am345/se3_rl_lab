@@ -30,6 +30,7 @@ se3_rl_lab = [
     "assets/robots/serialleg/mjcf/*.xml",
     "assets/robots/serialleg/urdf/*.urdf",
     "assets/robots/serialleg/usd/*.usd",
+    "assets/robots/serialleg/recovery_states/*.npz",
     "assets/robots/serialleg/*.yaml",
     "assets/robots/serialleg/meshes/**/*.stl",
 ]

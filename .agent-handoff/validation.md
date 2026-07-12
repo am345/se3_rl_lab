@@ -2,6 +2,63 @@
 
 | Date | Command/Check | Result | Notes |
 | --- | --- | --- | --- |
+| 2026-07-12 | delete Recovery-Loco + recovery/actuator/observation pytest + Ruff | passed | `17 passed`；Gym 注册、两个 loco cfg、`_LOCO_*` 范围和两个 dense tracking 函数均删除；负向契约锁定其不存在。 |
+| 2026-07-12 | stop `recovery_motor_tn_fresh_5k` and verify process/GPU | passed | PID 22920 及其进程组已退出；GPU 训练占用释放。 |
+| 2026-07-12 | recovery PPO contract pytest + Ruff | passed | 远端 `17 passed`；相关 3 文件 Ruff check/format 通过；flat 注册保持 `PPORunnerCfg`，两个 recovery task 使用 `RecoveryPPORunnerCfg`。 |
+| 2026-07-12 | `SerialLeg-Recovery-v0`, 4096 env, 1 PPO update, `recovery_ref_std_gate` | passed | iteration 0 mean std 0.50、mean reward -4.09、无 NaN/OOM；运行时 YAML 为 24 steps、0.5/0.00516/3e-4/0.008。 |
+| 2026-07-12 | formal `recovery_ref_std_fresh_5k` health before PR | running/passed through iteration 427 | PID 28338；std 0.83（从 iteration 314 的 0.89 回落）、mean reward 87.22、catastrophic 0、无 NaN/Traceback/OOM。 |
+| 2026-07-12 | `recovery_motor_tn_fresh_5k` std/log/checkpoint diagnosis | issue confirmed | std 1.01@iter0 → 1.80@100 → 2.20@500 → 2.85@808；model500 六维 `[0.960,2.842,0.890,2.993,2.487,3.006]`；iter727–733 mean reward 出现 `-10^6~-10^9`。 |
+| 2026-07-12 | current/reference recovery PPO config and installed RSL-RL source inspection | mismatch confirmed | current `init_std=1.0, entropy=0.01, lr=1e-3, KL=0.01`；reference `0.5, 0.00516, 3e-4, 0.008`。RSL loss 为 `... - entropy_coef * entropy.mean()`，scalar std 无上限 clamp。 |
+| 2026-07-12 | fresh motor-model `SerialLeg-Recovery-v0`, 4096 env, 1 PPO update | passed | 98,304 steps、30,674 steps/s、catastrophic 0、无 NaN/OOM；证明正式规模 capacity 与 PPO 链路通过。 |
+| 2026-07-12 | formal `recovery_motor_tn_fresh_5k` initial health | running/passed initial gate | seed 42、resume false、5000 iterations；PID 22920，iteration 0–31 健康，首轮约 29.9k steps/s，无 NaN/Traceback/OOM。 |
+| 2026-07-12 | YAML/action contract pytest + Ruff/format | passed | `16 passed`；YAML 锁 `0.25/45.0`，action cfg 锁为从 `SERIALLEG_CONTRACT` 读取；相关 Python lint/format 通过。 |
+| 2026-07-12 | `convert_serialleg_urdf_to_usd.py` + `--check` | passed | YAML SHA 变化后重建 USD；13/12/2 loops/2 tendons、54 meshes/7102 faces、2 cylinders、0 visuals、`536348 bytes`、质量 `12.72874553 kg`。 |
+| 2026-07-12 | IsaacLab runtime action-scale probe | passed | `yaml 0.25 45.0` 与 `runtime 0.25 45.0` 完全一致。 |
+| 2026-07-12 | `smoke_recovery_reset.py --num-envs 64 --iteration 2000 --steps 16 --action-std 1.0 --device cuda:0`（YAML/USD rebuild 后） | passed | cache ratio 0.297、passive/tendon error 0、max abs reward 1.624、wheel clearance 0.0010 m，reward/obs finite。 |
+| 2026-07-12 | `smoke_serialleg_motor_envelopes.py --samples 801 --headless --device cuda:0` | passed | 实际 runtime `DCMotor`/`TorqueSpeedCurveActuator` 全速域对照共享 `MotorSpec`；leg max error `5.836e-06 N·m`、wheel max error `7.366e-06 N·m`，`velocity_limit_sim=none`。 |
+| 2026-07-12 | actuator/recovery/observation pytest after dense-envelope test | passed | `16 passed`；新增轮曲线 2001 点 finite/symmetric/non-increasing 检查。 |
+| 2026-07-12 | `.venv/bin/python -m pytest -q scripts/test_serialleg_actuators.py scripts/test_serialleg_observations.py scripts/test_recovery_contract.py`（远端） | passed | `15 passed`；覆盖轮实测曲线/插值/裁剪、腿四象限包络、actuator wiring、policy scale、34D/40D observation 与 recovery 静态合同。 |
+| 2026-07-12 | Ruff check/format + `git diff --check`（相关 actuator 文件） | passed | 4 个 Python 文件 lint/format 通过，tracked diff 无 whitespace error。 |
+| 2026-07-12 | IsaacLab config/runtime actuator probe（1 env CUDA） | passed | 配置为 `DCMotorCfg`/`TorqueSpeedCurveActuatorCfg`，runtime 为 `DCMotor`/`TorqueSpeedCurveActuator`；无 `velocity_limit_sim`。轮 `[67.43,70.90]` 得 `[2.95,-1.47] N·m`，腿 no-load 四象限裁剪与参考一致。 |
+| 2026-07-12 | `smoke_recovery_reset.py --num-envs 64 --iteration 2000 --steps 16 --action-std 1.0 --device cuda:0` | passed | cache ratio 0.250、passive/tendon error 0、max abs reward 1.435、wheel clearance 0.0010 m，reward/obs finite。 |
+| 2026-07-12 | 本机 `uv run pytest ...` | not run | 本机缺少 editable sibling `D:\RoboMaster\IsaacLab`，uv metadata 解析在测试前失败；改在已锁定远端环境验证。 |
+| 2026-07-12 | recovery-loco static contract/Ruff（历史，后续已删除） | passed at the time | `6 passed`；该 task/reward/注册随后按用户要求删除，以本文件顶部的删除验证为当前状态。 |
+| 2026-07-12 | 4096-env resume gate from recovery `model_1999.pt` | passed | 27 reward terms、单 velocity stage、1 PPO update；无 NaN，catastrophic 0。 |
+
+| Date | Command/Check | Result | Notes |
+| --- | --- | --- | --- |
+| 2026-07-12 | `se3rl eval ... --checkpoint 1999 --task SerialLeg-Recovery-v0 --scenario-duration 4.0 --no-rerun` | passed | 1200 finite samples；MP4 23.98s、H.264、1280×720、50 FPS、4,516,102 bytes。 |
+| 2026-07-12 | MP4 frame extraction/visual inspection | passed | 2 秒抽帧可见机器人 collision preview、地面和速度箭头。 |
+
+| Date | Command/Check | Result | Notes |
+| --- | --- | --- | --- |
+| 2026-07-12 | `recovery_nan_probe_v2` | reproduced | iteration 210 / step 5066 / env 2821；articulation 全 NaN，raw action max 627.8，contact finite。 |
+| 2026-07-12 | `recovery_catastrophic_ab`, 4096 env × 400 iterations | passed | 同 seed 无 NaN；termination 峰值约 1.4% 后归零；最终 reward 92.29、episode length 1000、action std 1.98。 |
+| 2026-07-12 | cleanup/static gates | passed | contract `5 passed`、Ruff、`git diff --check`；源码无 `[DEBUG-recovery-nan-v2]`。 |
+
+| Date | Command/Check | Result | Notes |
+| --- | --- | --- | --- |
+| 2026-07-12 | 旧 `/tmp/recovery_full_2k.log` 定位 | failed as expected | iteration 835 后 RSL-RL 检出 reward NaN；dataset 1500 阶段尚未启用。 |
+| 2026-07-12 | stage-650 random-action soak | passed | 1024 env、1200 steps、action std 1.0/9.1 均 finite；std 9.1 最大绝对 reward 135.874。 |
+| 2026-07-12 | recovery contract + Ruff | passed | 远端 `5 passed`；相关两个文件 `All checks passed!`。 |
+| 2026-07-12 | 4096 env stage-650 reset gate | passed | 16 steps finite，passive error 0，tendon pos/vel 0，最小 wheel clearance 0.0010 m。 |
+| 2026-07-12 | 本地 uv pytest/Ruff | not run | 本机缺少 sibling `../IsaacLab/source/isaaclab`；使用已同步远端环境验证。 |
+
+| Date | Command/Check | Result | Notes |
+| --- | --- | --- | --- |
+| 2026-07-11 | `smoke_recovery_reset.py --num-envs 4096 --iteration 2000` | passed | cache ratio 0.253、passive error 0、tendon-root pos/vel 0，16步max abs reward 94.921，所有reward/observation有限。 |
+| 2026-07-11 | 4096-env `recovery_full_reset_soak`, 100 iterations | passed | 9830400 steps、training time 179.74s；跨过旧NaN窗口，无NaN/异常退出。 |
+| 2026-07-11 | fresh `recovery_full_2k`, 4096 env/2000 iterations | running | `/tmp/recovery_full_2k.log`；第4轮约58k steps/s、显存4.9 GiB，无NaN，ETA约1小时。 |
+| 2026-07-11 | recovery cache/schema/fourbar/reset static tests; Ruff; `git diff --check` | passed | `5 passed`；40k cache为20k train/20k eval，10-joint顺序含4 passive；默认policy pose派生passive pose误差 `<2e-5 rad`；settle覆盖已从源码移除。 |
+| 2026-07-11 | remote sync/read-only status after complete reset migration | blocked | SSH连接建立后在 `kex_exchange_identification` 被远端关闭；未停止/重启训练，远端同步结果和训练状态均为 `UNKNOWN`。 |
+| 2026-07-11 | remote SHA verification + `pytest scripts/test_recovery_contract.py -q` | passed | actions/fourbar/reset/config/40k NPZ本地与远端SHA逐一一致；远端`5 passed in 3.60s`，无训练进程，未启动Isaac环境。 |
+| 2026-07-11 | clean 4096-env `recovery_settle_clean_soak`, 100 iterations | passed | 9830400 steps、training time 144.87s；跨过原 52/58 轮故障点，无诊断代码、无 NaN，最终 mean reward 147.12。 |
+| 2026-07-11 | instrumented 4096-env recovery NaN reproduction | reproduced/fixed | 定位到 reset 后 PhysX state 爆炸；包络 clearance 单独仍复现，加入 40 physics-step action settle 后 100 iterations 通过，临时 debug 前缀已清理。 |
+| 2026-07-11 | fresh `recovery_2k_settle`, 4096 env/2000 iterations | running | run `2026-07-11_17-42-49_recovery_2k_settle`；第 18 轮约 66k steps/s、显存 4.9 GiB、无 NaN。 |
+| 2026-07-11 | background `se3rl train --task SerialLeg-Recovery-v0 --envs 4096 --iterations 2000 --run-name recovery_2k --device cuda:0` | failed | 第 58 轮后 `ValueError: rewards ... contain NaN values`；进程退出、GPU 释放，只保存 `model_0.pt`。第 58 轮 mean reward 144.30、episode length 1000；需定位具体 reward/state 后重训。 |
+| 2026-07-11 | remote `train.py --task SerialLeg-Recovery-v0 --num_envs 1 --device cuda:0 --max_iterations 1` | passed | 完成 24 steps/1 PPO update；Reward Manager 25 terms、Termination Manager timeout-only、action 6D、actor/critic 34D/40D 全部执行，无异常退出。 |
+| 2026-07-11 | `pytest scripts/test_recovery_contract.py -q`; Ruff check/format; `git diff --check` | passed | recovery reward 名称/权重、只覆盖 reward/termination/reset、Gym 注册静态合同 `3 passed`；新增 Python 文件格式与 lint 通过。 |
+| 2026-07-11 | recovery task legacy `smoke_serialleg_task.py` | expected mismatch | 环境已完整创建；旧 smoke 随后因硬编码只接受 flat 官方 reward 列表而退出，改用真实 1-update PPO gate 完成运行时验证。 |
 | 2026-07-11 | yaw-relative follow camera; remote Ruff; 1.0s short eval; ffmpeg 1.10s/1.90s frame comparison; full 4.0s eval | passed | 相机逐步跟随 root 平移和 yaw，保持侧后方 `2.4m`/上方 `0.57m`；短测首尾机器人保持居中，完整 eval 退出 0并生成 MP4/RRD。 |
 | 2026-07-11 | enlarged debug arrows; remote Ruff; 0.5s short eval; full 4.0s eval; ffmpeg frame inspection | passed | scale `(1.0,0.18,0.18)`、velocity multiplier `3.0`、height `0.35m`；完整 eval 退出 0，抽帧确认绿/蓝箭头尺寸明显且机器人仍正常移动。 |
 | 2026-07-11 | preview world-space sync fix; remote Ruff; 0.5s eval; ffmpeg 0.55s/0.95s frame comparison; full 4.0s eval | passed | telemetry/world-position 先证明物理机器人移动；短测抽帧进一步确认可视 collision 外壳随机器人平移和变姿。完整录制退出 0，复制到本地的 MP4/RRD 分别为 977902/340527 bytes。 |

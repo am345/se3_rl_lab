@@ -1,5 +1,13 @@
 # Task Backlog
 
+- [x] 停止 `recovery_motor_tn_fresh_5k`；新增 Recovery 专用 PPO 配置，对齐参考的 `0.5/0.00516/3e-4/0.008`，保留 MLP/24-step rollout，并完成 4096-env gate。
+- [ ] 监控 `recovery_ref_std_fresh_5k` 跨过 iteration 210、500、650、835、1500、2000、5000；检查 std、NaN/OOM、catastrophic 比例、dataset 混入和 checkpoints。
+- [ ] 5k 完成后运行同一 flat-basic/recovery suite，比较 linear/yaw RMSE、自起成功率并录制 MP4。
+
+- [x] 迁移腿部 DM-8009P 四象限 DC motor 与轮部 M3508+C620 14:1 实测 T-N 曲线，保持 policy/action 合同不变。
+- [x] 用显式电机模型跑 4096-env/1-update gate，并从头启动 recovery 5k。
+- [x] 将 `robot_config.yaml` 的 legs/wheels action scale 修正为 `0.25/45.0`，action term 改为直接读取 contract，并重建 USD/更新 contract SHA。
+
 - [x] 为 `WIN-46S653M0DI0` 建立默认 GPUFree 执行环境：SSH key/alias、GitHub reverse proxy、Selkies GUI local forward、sibling repos、locked `.venv`、RTX 4090 CUDA 与 Isaac Sim SerialLeg smoke 均已验证。
 - [ ] 开始长训练前确认数据盘剩余空间并制定 checkpoints/logs 外部备份；当前 49GB 数据盘同时承载约 19GB `.venv`、uv cache、仓库和训练产物，释放实例前不得假设数据一定保留。
 - [x] 运行真实 `uv sync` 创建 `.venv` 并安装当前锁定依赖。
@@ -46,7 +54,8 @@
 - [x] 迁移 feed-forward RSL-RL MLP/PPO cfg：分离 actor/critic obs-group mapping、`[512,256,128]` ELU、actor normalization off、critic normalization on、24-step rollout；当前 4-env/96-sample 最小 PPO update 已通过，此前同结构 checkpoint save/load round-trip 已通过，不使用 GRU/BPTT。
 - [x] 完成 finetune 前两阶段工具链：`se3rl` train/resume/play/eval/record/runs/compare、manifest/status、best checkpoint、collision-only MP4、flat-basic metrics/telemetry、Rerun 和 Markdown 报告，含真实 train/eval gate 与文档。
 - [ ] 扩展 `flat-basic` 为多 seed 聚合，并继续训练/评估更高 velocity stages 和 push curriculum；当前 model_499 只到 velocity stage 1、push stage 0。
-- [ ] finetune 阶段再评估并适配旧 flat 自定义奖励；当前不迁移 command-driven 高度、分段/联合跟踪、轮腿专属 penalty/gating 或任何跳跃奖励/事件/curriculum。
+- [x] 新增 `SerialLeg-Recovery-v0`，迁移 Recovery-Discovery reward、完整 reset/dataset 与 hard-error termination；保持 flat action/observation 合同。
+- [x] 完成 dataset 10→12 joint remap、passive/tendon-root、clearance 与 4096-env gate，并启动当前 fresh 5k。
 - [ ] 低优先级/finetune：重新评估 command observation normalization。当前 legacy scale 会令最终 `vx=±2.4 m/s` 映射为 `±4.8`，且 height 未中心化；若修改，必须同步训练、play、deploy/sim2sim 与 checkpoint 兼容策略。
 - [x] 按用户最新要求取消 handoff 的 `.gitignore` 规则，将 `AGENT_HANDOFF.md`、`AGENT_SESSION_PROMPTS.md` 与 `.agent-handoff/*.md` 纳入 Git，支持跨电脑恢复；原“本地私有”策略已废止。
 

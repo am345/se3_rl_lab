@@ -1,5 +1,107 @@
 # Current Work Log
 
+## 2026-07-12 删除 Recovery-Loco
+
+- 按用户要求删除 `SerialLeg-Recovery-Loco-v0` Gym 注册、`RecoveryLocoEnvCfg`、`RecoveryLocoRewardsCfg`、三组 `_LOCO_*` 速度限制、两个 dense Smooth-L1 tracking reward 函数。
+- 静态契约改为确认 loco task/dense terms 不存在；远端 recovery/actuator/observation 回归 `17 passed`，Ruff check/format 通过。
+- 当前正式训练使用 `SerialLeg-Recovery-v0`，进程启动时已加载基础 recovery 配置，因此本次删除不改变其运行时环境；PR 前更新到 iteration 427、std 0.83、mean reward 87.22、catastrophic 0、无 NaN/Traceback。
+
+## 2026-07-12 recovery 参考随机策略参数重启 5k
+
+- 停止旧 `recovery_motor_tn_fresh_5k`：PID `22920` 最终约 iteration 907，mean std 约 2.96；进程与 GPU 占用已清理。
+- 新增 `RecoveryPPORunnerCfg`，保持 MLP/24-step rollout 不变，对齐参考值 `init_std=0.5`、`entropy=0.00516`、`lr=3e-4`、`desired_kl=0.008`；Recovery 使用新配置，flat 保持原配置。
+- 静态回归 `17 passed`，Ruff check/format 通过；4096-env/1-update runtime gate 显示 std 0.50、无 NaN/OOM，保存的 agent YAML 与目标参数一致。
+- 启动 fresh 5k：run `recovery_ref_std_fresh_5k`，PID `28338`，日志 `/tmp/recovery_ref_std_fresh_5k.log`，run dir `2026-07-12_16-00-33_recovery_ref_std_fresh_5k`。iteration 108 时 std 0.75、catastrophic 0、无非有限值。
+
+## 2026-07-12 fresh recovery 5k
+
+- Preflight: RTX 4090 空闲（约 24 GB free）、数据盘剩余 28 GB、无残留训练进程。
+- Gate: `SerialLeg-Recovery-v0`、4096 env、1 PPO update 通过；98,304 steps、30.7k steps/s、`catastrophic_state=0`、无 NaN/OOM。
+- Formal run: fresh seed 42、4096 env、5000 iterations、`resume=false`、save interval 500；run name `recovery_motor_tn_fresh_5k`。
+- Runtime: PID `22920`；日志 `/tmp/recovery_motor_tn_fresh_5k.log`；run dir `logs/rsl_rl/serialleg_flat_closed_chain/2026-07-12_15-28-33_recovery_motor_tn_fresh_5k`。
+- Initial health: iteration 0–31 已运行，首轮约 29.9k steps/s、catastrophic 0、无 NaN/Traceback/OOM，ETA 约 4h34m。
+- Later diagnosis: mean action std 由 1.01 单调增至约 2.96；iteration 727–733 出现巨额负 reward。用户授权后，该 run 已在约 iteration 907 停止并由参考随机策略参数的 fresh run 取代。
+
+## 2026-07-12 YAML action-scale 单一来源
+
+- Objective: 消除 YAML `40/3.71` 与实际 policy `0.25/45` 的矛盾。
+- Changes: `robot_config.yaml` 改为 legs `0.25`、wheels `45.0`；`SerialLegDelayedActionCfg` 默认值通过 `SERIALLEG_CONTRACT` 读取，不再维护第二份数字；静态测试锁定 YAML→contract→action wiring；README 同步。
+- Asset: YAML SHA 变化后重建 collision-only USD，磁盘 `--check` 报告 13 links/12 tree joints/2 loops/2 tendons/54 meshes/7102 faces/2 cylinders/0 visuals、质量 `12.72874553 kg`、大小 `536348 bytes`。
+- Runtime: config probe 输出 `yaml 0.25 45.0` / `runtime 0.25 45.0`；64-env CUDA recovery 16-step gate 通过，reward/obs finite、passive/tendon error 0、wheel clearance 0.0010 m。
+
+## 2026-07-12 电机扭矩—速度模型迁移
+
+- Objective: 迁移 `se3_wheel_leg_closedchain_obs34` 的腿部四象限 DC motor 与轮部实测非线性 T-N 包络，不改 policy/action I/O、reward、reset 或 termination。
+- Changed files:
+  - `source/se3_rl_lab/se3_rl_lab/assets/robots/serialleg_motors.py`: 新增共享 `MotorSpec`、DM-8009P 参数及 M3508+C620 14:1 的 12 点曲线。
+  - `source/se3_rl_lab/se3_rl_lab/assets/robots/serialleg_actuators.py`: 新增 IsaacLab `TorqueSpeedCurveActuator`，按当前关节速度分段线性插值并裁剪显式 PD 扭矩。
+  - `source/se3_rl_lab/se3_rl_lab/assets/robots/serialleg.py`: 腿切换为 `DCMotorCfg`，轮切换为曲线 actuator，passive linkage 保持 implicit zero actuator。
+  - `scripts/test_serialleg_actuators.py`: 新增曲线点、插值、正反转、四象限腿电机和 wiring/action 合同测试。
+  - `README.md`: 记录显式 actuator、参数来源以及 YAML/action-scale 边界。
+- Result: 远端 IsaacLab 实例化为 `DCMotor`/`TorqueSpeedCurveActuator`，定点裁剪与参考值一致；64-env CUDA recovery reset + 16-step random rollout 通过，无 non-finite。
+- Follow-up: 新增 `scripts/smoke_serialleg_motor_envelopes.py`，在实际 runtime actuator 上全速域采样 801 点并与共享 `MotorSpec` 对照；腿/轮最大误差分别为 `5.836e-06/7.366e-06 N·m`。同时生成腿/轮 T-N 包络可视化，README 补充 gate 命令。
+- Remaining risks: 尚未用新 dynamics 跑 4096-env PPO update 或正式从头训练；低速目标区仍处于轮曲线恒扭矩平台，跟踪改善幅度需实训评估。
+
+## 2026-07-12 recovery locomotion finetune（已删除）
+
+- 新增 recovery-loco task、固定实用速度范围与两个 dense tracking reward terms。
+- 从原 recovery `model_1999.pt` 成功 resume；1-update runtime gate 后启动 1000-iteration finetune。
+- 该独立任务、专用速度范围和 dense reward 已按用户后续要求从代码删除，不再是活跃训练路径。
+
+## 2026-07-12 model_1999 recovery eval MP4
+
+- 修正 eval worker 对 recovery reset 无 `pose_range` 参数的兼容性。
+- 录制 H.264 1280×720@50 FPS、23.98 秒 MP4，抽帧确认 collision preview、相机与箭头可见。
+- 将 MP4 和 metrics 从远端同步到 `artifacts/recovery_eval/`。
+
+## 2026-07-12 确定性定位 recovery NaN
+
+- 第二次正式 run 在 iteration 210 失败，推翻“wheel clearance 是 NaN 根因”的判断。
+- 插桩复现到 env 2821 的完整 PhysX state 同步变 NaN，之前 raw policy action 达 627.8；contact force 仍 finite。
+- 对照参考源码确认 recovery 保留 `catastrophic_state`；本仓库 timeout-only 测试和配置属于不完整迁移。
+- 恢复 hard-error termination 后，同 seed 原始 400-iteration repro 通过；临时 debug 插桩已清理。
+
+## 2026-07-12 recovery iteration-835 NaN
+
+- 定位旧训练在 iteration 835、82,182,144 steps 后 reward NaN；dataset 尚未启用。
+- 1024 env、iteration 650、1200 steps 的随机动作 std 1.0/9.1 均未复现。
+- 参考 recovery 启用了 `align_root_height_to_wheels=True` 和最终 collision snap；当前迁移此前遗漏了 joint randomization 后的实际 wheel clearance 修正。
+- 已在 `recovery_events.py` 增加 post-joint-reset wheel lift，并扩展 `smoke_recovery_reset.py` 的持续/策略/clearance 诊断能力。
+- 已启动 fresh `recovery_full_2k_wheel_clearance`。
+
+## 2026-07-11 — 完整reset运行时gate通过并启动正式2k
+
+- 新增 `scripts/smoke_recovery_reset.py`；64-env和4096-env iteration-2000 gate均通过，4096 env cache比例25.3%、passive误差0、两个tendon-root position/velocity为0，16步reward/observation有限。
+- 4096-env/100-iteration PPO soak完成9830400 steps，无NaN或异常退出；源码grep确认无runtime settle和debug钩子。
+- fresh `recovery_full_2k` 已启动，日志 `/tmp/recovery_full_2k.log`；第4轮约58k steps/s、显存4.9 GiB、无NaN。
+
+## 2026-07-11 — 完整迁移 recovery dataset/passive reset
+
+- 重新核对最新 `se3_wheel_leg_spring_add@058b800`，确认正式 Recovery-Discovery 使用 `serialleg_closedchain_stair_v3_40k.npz`、五姿态混合、cache ratio curriculum和完整 joint reset。
+- 新增四连杆 policy→passive position/velocity映射；标准 reset同步写4 policy、4 passive、2 wheel和2 virtual tendon-root；cache按名称将10-joint样本映射到当前12-joint资产。
+- 复用40k NPZ（20k train/20k eval），cache比例为 iteration `1500/2000/2600/3400/4200` 的 `10%/25%/45%/60%/70%`；删除会污染PPO rollout的零动作settle。
+- 本地 Ruff/diff通过，dataset/schema/passive映射测试 `5 passed`。服务器恢复后已同步全部核心源码与NPZ，5个文件本地/远端SHA一致；远端同一测试 `5 passed`。确认GPU空闲且无训练进程，未启动Isaac环境或训练。
+
+## 2026-07-11 — 修复 recovery reset 后 PhysX NaN 并重启 2k
+
+- 定位钩子两次捕获到单 env root/joint state 爆炸至 `1e13–1e23`，首个非有限 reward 分别为 `leg_dof_acc`/`tracking_lin_vel`；reward 不是根因。
+- 迁移完整机器人包络 clearance；单独使用仍在第 52 轮复现。随后为 recovery reset 增加 40 physics-step 零动作 settle，并在 action term 中只对 settle env 清 raw/processed/FIFO。
+- 带诊断与清理诊断后的两次 4096-env/100-iteration soak 均完成 983 万 steps，无 NaN；临时 `[DEBUG-recovery-nan]` 已移除。
+- fresh run `2026-07-11_17-42-49_recovery_2k_settle` 已启动；第 18 轮正常，预计约 50 分钟。
+
+## 2026-07-11 — 启动 recovery 2k fresh 训练
+
+- 远端数据盘剩余 28 GB、RTX 4090 空闲后，从零启动 `SerialLeg-Recovery-v0`：4096 env、2000 PPO iterations、run `2026-07-11_16-52-22_recovery_2k`。
+- 后台日志为 `/tmp/recovery_2k_20260711_165215.log`；第 19 轮约 84k steps/s、mean reward 45.43、显存约 4.5 GiB，预计约 40 分钟。
+
+## 2026-07-11 — 新增 SerialLeg recovery 微调任务
+
+- 注册 `SerialLeg-Recovery-v0`，继承 flat scene/action/observation/command/curriculum/PPO，只替换 recovery reward、reset 和 termination。
+- `RecoveryRewardsCfg` 锁定 `se3_wheel_leg_spring_add` Recovery-Discovery 的 25 个 term 与权重；新增姿态/高度/稳定、腿轮动作正则、能耗、限位和接触实现，`diagnostics` 恒返回零。
+- reset 按 iteration `0/300/650/1000/1400` 从 `±15°` 扩展到全姿态，并随机化 root xy/yaw/线角速度；termination 只保留 timeout。
+- 更新 README、实验工具链文档和 run manifest reward profile；新增 `scripts/test_recovery_contract.py`。
+- 远端 CUDA 完成 1 env/24 steps/1 PPO update；6D action、34D/40D observation、25 reward 与 timeout-only termination 均成功实例化并执行。
+
 ## 2026-07-11 — eval 录制相机跟随机器人
 
 - eval worker 新增逐控制步相机更新：以机器人 root yaw 旋转侧后方 offset，保持约 `2.4 m` 横向距离和 `0.57 m` 高差，target 始终指向 root。

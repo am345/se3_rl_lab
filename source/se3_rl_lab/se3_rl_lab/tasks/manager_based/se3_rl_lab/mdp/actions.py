@@ -16,6 +16,17 @@ from isaaclab.utils import configclass
 from se3_rl_lab.assets.robots.serialleg_contract import SERIALLEG_CONTRACT
 
 
+def _required_action_scale(group_name: str) -> float:
+    scale = SERIALLEG_CONTRACT.actuator_groups[group_name].action_scale
+    if scale is None or scale <= 0.0:
+        raise ValueError(f"SerialLeg policy group {group_name!r} requires a positive action_scale, got {scale}")
+    return scale
+
+
+_LEG_ACTION_SCALE = _required_action_scale("legs")
+_WHEEL_ACTION_SCALE = _required_action_scale("wheels")
+
+
 def delay_seconds_to_steps(delay_s: float, physics_dt: float) -> int:
     """Quantize a transport delay to the nearest physics step."""
     if physics_dt <= 0.0:
@@ -219,8 +230,8 @@ class SerialLegDelayedActionCfg(ActionTermCfg):
     """Configuration for :class:`SerialLegDelayedAction`."""
 
     class_type: type[ActionTerm] = SerialLegDelayedAction
-    leg_scale: float = 0.25
-    wheel_scale: float = 45.0
+    leg_scale: float = _LEG_ACTION_SCALE
+    wheel_scale: float = _WHEEL_ACTION_SCALE
     action_clip: float | None = 100.0
     action_delay_enabled: bool = True
     action_delay_s: float = 0.005
