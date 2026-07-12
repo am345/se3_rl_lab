@@ -2,8 +2,9 @@
 
 ## Current State
 
-- Last updated: 2026-07-12 16:01（Asia/Shanghai）
+- Last updated: 2026-07-12 16:18（Asia/Shanghai）
 - Workspace: 本机 `D:\RoboMaster\se3_rl_lab`；训练机 SSH alias `se3_rl_lab_gpufree`；远端根目录 `/root/gpufree-data/se3-workspace/se3_rl_lab`。
+- Git: branch `codex/recovery-motor-model`；Draft PR [#9](https://github.com/am345/se3_rl_lab/pull/9)；首个实现提交 `e506dda`。
 - Current objective: 使用已迁移的腿/轮 T-N 电机模型，从头训练 5000 iterations 的 `SerialLeg-Recovery-v0`，并抑制旧 run 的 action std 失控。
 - Current status: 旧 run 已停止；Recovery 专用 PPO 配置已落地并通过 4096-env 单更新门禁；新 5k 正在运行。
 
@@ -14,7 +15,7 @@
 - Log: `/tmp/recovery_ref_std_fresh_5k.log`
 - Run directory: `/root/gpufree-data/se3-workspace/se3_rl_lab/logs/rsl_rl/serialleg_flat_closed_chain/2026-07-12_16-00-33_recovery_ref_std_fresh_5k`
 - Contract: fresh seed 42、4096 env、5000 iterations、`resume=false`、save interval 500。
-- Current health before PR: iteration 427，`Mean action std=0.83`、`Mean reward=87.22`、`catastrophic_state=0`，无 NaN/Traceback/OOM；std 已从 iteration 314 的 0.89 回落。
+- PR 正文快照更新到 iteration 487：std 0.79、mean reward 140.69、catastrophic/NaN/Traceback/OOM 均为 0；std 已从 iteration 314 的 0.89 回落。
 
 ## Configuration Change
 

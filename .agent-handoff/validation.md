@@ -2,9 +2,10 @@
 
 | Date | Command/Check | Result | Notes |
 | --- | --- | --- | --- |
+| 2026-07-12 | branch/commit/push/Draft PR | passed | branch `codex/recovery-motor-model`，commit `e506dda`，Draft PR [#9](https://github.com/am345/se3_rl_lab/pull/9)；GitHub App 403 后使用已认证 `gh` fallback。 |
 | 2026-07-12 | delete Recovery-Loco + recovery/actuator/observation pytest + Ruff | passed | `17 passed`；Gym 注册、两个 loco cfg、`_LOCO_*` 范围和两个 dense tracking 函数均删除；负向契约锁定其不存在。 |
 | 2026-07-12 | stop `recovery_motor_tn_fresh_5k` and verify process/GPU | passed | PID 22920 及其进程组已退出；GPU 训练占用释放。 |
-| 2026-07-12 | recovery PPO contract pytest + Ruff | passed | 远端 `17 passed`；相关 3 文件 Ruff check/format 通过；flat 注册保持 `PPORunnerCfg`，两个 recovery task 使用 `RecoveryPPORunnerCfg`。 |
+| 2026-07-12 | recovery PPO contract pytest + Ruff | passed | 远端 `17 passed`；flat 注册保持 `PPORunnerCfg`，当前唯一 recovery task 使用 `RecoveryPPORunnerCfg`；Recovery-Loco 已由后续删除验证锁定不存在。 |
 | 2026-07-12 | `SerialLeg-Recovery-v0`, 4096 env, 1 PPO update, `recovery_ref_std_gate` | passed | iteration 0 mean std 0.50、mean reward -4.09、无 NaN/OOM；运行时 YAML 为 24 steps、0.5/0.00516/3e-4/0.008。 |
 | 2026-07-12 | formal `recovery_ref_std_fresh_5k` health before PR | running/passed through iteration 427 | PID 28338；std 0.83（从 iteration 314 的 0.89 回落）、mean reward 87.22、catastrophic 0、无 NaN/Traceback/OOM。 |
 | 2026-07-12 | `recovery_motor_tn_fresh_5k` std/log/checkpoint diagnosis | issue confirmed | std 1.01@iter0 → 1.80@100 → 2.20@500 → 2.85@808；model500 六维 `[0.960,2.842,0.890,2.993,2.487,3.006]`；iter727–733 mean reward 出现 `-10^6~-10^9`。 |

@@ -1,5 +1,12 @@
 # Current Work Log
 
+## 2026-07-12 Recovery/Motor PR
+
+- 创建分支 `codex/recovery-motor-model`，提交 `e506dda Implement recovery task and motor envelopes` 并推送到 `origin`。
+- GitHub App 创建 PR 因 integration 403 失败，按发布流程使用已认证 `gh` CLI 成功创建 Draft PR [#9](https://github.com/am345/se3_rl_lab/pull/9)。
+- PR 正文记录当前 5k progress（iteration 487、std 0.79、mean reward 140.69、无 NaN/Traceback/OOM）、旧 std 失控/reward 爆点、历史 PhysX NaN、电机固定 limit 问题和未跨过的长训练风险。
+- 明确排除本地 `.codex/` 和 `artifacts/` 生成产物；reset dataset、USD、电机/recovery 代码、测试和文档均已纳入提交。
+
 ## 2026-07-12 删除 Recovery-Loco
 
 - 按用户要求删除 `SerialLeg-Recovery-Loco-v0` Gym 注册、`RecoveryLocoEnvCfg`、`RecoveryLocoRewardsCfg`、三组 `_LOCO_*` 速度限制、两个 dense Smooth-L1 tracking reward 函数。
