@@ -9,7 +9,13 @@
 1. 统一 `se3rl` CLI、run/checkpoint 解析、manifest/status、Isaac Eval、collision-only MP4 和固定评估套件。
 2. 统一 telemetry、Rerun `.rrd`、best checkpoint 选择与 Markdown 报告/对比。
 
-当前不包含 Viser、MuJoCo sim2sim、真机部署和 finetune reward。它们不应成为本阶段工具的隐式依赖。
+当前不包含 Viser、MuJoCo sim2sim 和真机部署。finetune 已提供 `SerialLeg-Recovery-v0`：它保持 flat
+checkpoint 的 action/observation/PPO 接口，只迁移 Recovery-Discovery reward、全姿态 reset，以及
+`time_out + catastrophic_state` termination。
+
+Recovery reset 使用随仓库交付的 `serialleg_closedchain_stair_v3_40k.npz`（20k train/20k eval）与标准
+五姿态混合课程。完整 joint reset 会同步写入 policy、passive、wheel 和 virtual tendon-root position/velocity；
+cache 比例在 iteration `1500/2000/2600/3400/4200` 提升到 `10%/25%/45%/60%/70%`。
 
 ## 安装与入口
 
@@ -33,6 +39,15 @@ export OMNI_KIT_ACCEPT_EULA=YES
 ```bash
 uv run se3rl train --envs 4096 --iterations 500 --run-name flat_baseline
 ```
+
+从 flat checkpoint 启动 recovery finetune：
+
+```bash
+uv run se3rl train --task SerialLeg-Recovery-v0 --envs 4096 --iterations 500 \
+  --run-name recovery_finetune --resume --load-run <flat-run> --checkpoint model_499.pt
+```
+
+run manifest 会把该任务记录为 `reward_profile=recovery_discovery`；flat 任务仍记录为 `official_base`。
 
 恢复指定 run：
 

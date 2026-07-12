@@ -129,11 +129,13 @@ def main() -> int:
     env_cfg.seed = 47
     env_cfg.log_dir = str(run_dir)
     env_cfg.commands.velocity_height.debug_vis = True
-    env_cfg.events.reset_base.params["pose_range"] = {
-        "x": (0.0, 0.0),
-        "y": (0.0, 0.0),
-        "yaw": (0.0, 0.0),
-    }
+    reset_base_params = env_cfg.events.reset_base.params
+    if "pose_range" in reset_base_params:
+        reset_base_params["pose_range"] = {
+            "x": (0.0, 0.0),
+            "y": (0.0, 0.0),
+            "yaw": (0.0, 0.0),
+        }
     env = gym.make(task, cfg=env_cfg, render_mode="rgb_array")
     unwrapped = env.unwrapped
     collision_preview = spawn_collision_preview("/World/envs/env_0/Robot")

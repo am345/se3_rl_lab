@@ -1,5 +1,31 @@
 # Risks, Blockers, And Unknowns
 
+## 2026-07-12 recovery 参考参数 fresh 5k 风险
+
+- 旧 `recovery_motor_tn_fresh_5k` 已停止，不再作为有效训练结果；它证明原 `init_std=1.0/entropy=0.01/lr=1e-3/KL=0.01` 组合会伴随 std 增长和 reward 爆点。
+- 新 run 的 std 从 0.50 增至 iteration 314 的 0.89，随后在 iteration 427 回落到 0.83，显著低于旧 run iteration 100 的 1.80；RSL-RL scalar std 仍无上限，必须在 iteration 500 继续确认趋势。
+- 新 run 尚未跨过历史敏感点 210/650/835、dataset 1500 和最终 5000；完成前不能宣称长训练稳定性已验收。
+- 新配置只对齐四项已确认的随机策略参数，刻意保留当前 MLP、24-step rollout、clip 0.2、5 epochs；它不是参考 GRU/64-step PPO 的整套复制，后续效果比较需保留这个边界。
+- PID `28338` 和 `/tmp/recovery_ref_std_fresh_5k.log` 位于当前 GPUFree 实例；实例释放会中断训练，重要 checkpoint 仍需保留到持久数据盘/外部备份。
+
+## 2026-07-12 电机模型迁移后风险
+
+- 新显式 actuator 已通过 4096-env PPO 单更新 gate并进入正式长训练；闭链接触稳定性、catastrophic 比例和 NaN 风险仍需跨历史窗口定标。
+- 旧 `model_1999.pt`/loco finetune checkpoint 来自 implicit/static-limit dynamics。网络结构仍兼容，但其行为不能代表新电机模型的训练结果，正式比较应从头训练。
+- 轮曲线在 `|speed| <= 32.93 rad/s` 仍允许 `3.71 N·m`，因此缺失曲线不是低速 tracking error 的充分解释；腿 DC motor、控制动态、reward/command 等仍可能影响结果。
+
+## 2026-07-12 10:30 活跃风险
+
+- wheel clearance 是应保留的参考 reset 行为，但已证实不是本次 NaN 根因；旧 handoff 中的因果表述已被本节取代。
+- 400 轮确定性 repro 已通过，但正式 run 仍需跨过 835、1500 dataset 和 2000。
+- 当前 PPO 与参考 recovery PPO 不同（用户此前限定只迁移 reward/reset/termination）；本轮未修改 PPO。训练质量需与崩溃修复分开评估。
+
+## 2026-07-12 活跃风险
+
+- 新 fresh run 尚未跨过旧故障点 iteration 835；此前不能宣称长训练 NaN 已彻底解决。
+- 当前 IsaacLab 修复采用“保守 full-angle bbox + post-joint wheel lift”。若更高随机化阶段仍异常，应实现逐 collision-shape 最低点测量，不应添加 settle 或 `nan_to_num`。
+- dataset 从 iteration 1500 才混入，仍需独立验收该阶段。
+
 ## Current Blockers
 
 - 双 virtual-root URDF、schema-v3 contract、fixed-tendon USD 与 task runtime 已统一，无本轮 CPU/runtime blocker。
@@ -28,7 +54,7 @@
 - 直接 `uv run python -c "import se3_rl_lab"` 在未通过 AppLauncher/Kit bootstrap 的上下文仍可能报 `ModuleNotFoundError: No module named 'pxr'`；IsaacLab/IsaacSim 脚本应先通过 `AppLauncher` / `SimulationApp` 启动运行时。
 - IsaacSim 启动时大量 `Failed to create change watch ... errno=28/No space left on device`，当前 `/proc/sys/fs/inotify/max_user_watches=65536`、`max_user_instances=128`，疑似 inotify watch 不足；目前未阻止 task 注册或 CPU/headless 环境创建。
 - `OMNI_KIT_ACCEPT_EULA=YES uv run python -u scripts/zero_agent.py --task Template-Se3-Rl-Lab-v0 --num_envs 1 --headless` 在 CUDA 路径报 `omni.physx.tensors` CUDA OOM，随后 `Failed to get DOF velocities from backend`。
-- SerialLeg task 已完成 USD、delayed 6D action、34D/40D observations、非跳跃 command/events/terminations/curriculum、官方 locomotion rewards 与 feed-forward MLP/PPO，并通过 CPU/compact-CUDA 最多 4 环境短 gate、4-env 最小 PPO update 和 checkpoint round-trip；长 rollout、目标规模 CUDA capacity/训练与 finetune 自定义奖励仍未完成，不要误报为整个 RL 迁移完成。
+- 完整dataset/passive reset已通过4096-env cache gate和100-iteration PPO soak，旧NaN窗口未复现；但正式2k尚未跨过iteration 1500后的长期cache混合阶段。训练完成前仍需监控更高joint randomization/cache比例下的闭链接触稳定性。
 - 新 policy 明确为无 history 的 feed-forward MLP，旧 GRU checkpoint 与当前模型结构不兼容，不能直接 resume；若需要复用旧策略，只能另做权重迁移/蒸馏或重新训练，当前基础路径按重新训练处理。
 - `velocity_height` 现为强制 8D term，缺失或 shape 错误会硬失败；当前 pitch/roll 与末 3D jump slots 恒为零。内部 `base_velocity=[vx,0,yaw]` 只是官方 reward 适配视图，不得暴露给 policy 或替换 legacy 8D checkpoint 合同。
 - 启用官方 `bad_orientation`/`base_contact` termination 后，1-env CPU 64+64 零/小动作旧 smoke 会在长零动作阶段按设计终止；默认 gate 已收敛为 8+8，只验证 wiring 与短时物理稳定性。长时稳定性必须用训练策略控制的 rollout 验收，不能把短 gate 解释为长训练通过。

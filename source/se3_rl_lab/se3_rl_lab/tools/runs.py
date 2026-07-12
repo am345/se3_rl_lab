@@ -104,7 +104,7 @@ class RunDirectory:
             "action_contract": "SerialLeg delayed 6D",
             "actor_observation_dim": 34,
             "critic_observation_dim": 40,
-            "reward_profile": "official_base",
+            "reward_profile": "recovery_discovery" if "Recovery" in task else "official_base",
         }
         _atomic_json(self.manifest_path, payload)
         return payload
