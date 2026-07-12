@@ -4,7 +4,7 @@
 
 - 旧 `recovery_motor_tn_fresh_5k` 已停止，不再作为有效训练结果；它证明原 `init_std=1.0/entropy=0.01/lr=1e-3/KL=0.01` 组合会伴随 std 增长和 reward 爆点。
 - 新 run 的 std 从 0.50 增至 iteration 314 的 0.89，随后在 iteration 427 回落到 0.83，显著低于旧 run iteration 100 的 1.80；RSL-RL scalar std 仍无上限，必须在 iteration 500 继续确认趋势。
-- 新 run 尚未跨过历史敏感点 210/650/835、dataset 1500 和最终 5000；完成前不能宣称长训练稳定性已验收。
+- 新 run 已跨过 210/650，但尚未跨过历史敏感点 835、dataset 1500 和最终 5000；完成前不能宣称长训练稳定性已验收。
 - 新配置只对齐四项已确认的随机策略参数，刻意保留当前 MLP、24-step rollout、clip 0.2、5 epochs；它不是参考 GRU/64-step PPO 的整套复制，后续效果比较需保留这个边界。
 - PID `28338` 和 `/tmp/recovery_ref_std_fresh_5k.log` 位于当前 GPUFree 实例；实例释放会中断训练，重要 checkpoint 仍需保留到持久数据盘/外部备份。
 

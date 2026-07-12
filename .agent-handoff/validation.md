@@ -2,7 +2,8 @@
 
 | Date | Command/Check | Result | Notes |
 | --- | --- | --- | --- |
-| 2026-07-12 | branch/commit/push/Draft PR | passed | branch `codex/recovery-motor-model`，commit `e506dda`，Draft PR [#9](https://github.com/am345/se3_rl_lab/pull/9)；GitHub App 403 后使用已认证 `gh` fallback。 |
+| 2026-07-12 | branch/commit/push/PR merge | passed | PR [#9](https://github.com/am345/se3_rl_lab/pull/9) 已由 Draft 转 Ready 并 squash merge；merge commit `46edeee`，远端功能分支删除，本地 `main` 与 `origin/main` 一致。 |
+| 2026-07-12 | formal run post-merge health | passed through iteration 705 | std 0.58、mean reward 189.30、catastrophic 0、NaN/Traceback 0；已跨过 iteration 650。 |
 | 2026-07-12 | delete Recovery-Loco + recovery/actuator/observation pytest + Ruff | passed | `17 passed`；Gym 注册、两个 loco cfg、`_LOCO_*` 范围和两个 dense tracking 函数均删除；负向契约锁定其不存在。 |
 | 2026-07-12 | stop `recovery_motor_tn_fresh_5k` and verify process/GPU | passed | PID 22920 及其进程组已退出；GPU 训练占用释放。 |
 | 2026-07-12 | recovery PPO contract pytest + Ruff | passed | 远端 `17 passed`；flat 注册保持 `PPORunnerCfg`，当前唯一 recovery task 使用 `RecoveryPPORunnerCfg`；Recovery-Loco 已由后续删除验证锁定不存在。 |

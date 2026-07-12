@@ -6,6 +6,8 @@
 - GitHub App 创建 PR 因 integration 403 失败，按发布流程使用已认证 `gh` CLI 成功创建 Draft PR [#9](https://github.com/am345/se3_rl_lab/pull/9)。
 - PR 正文记录当前 5k progress（iteration 487、std 0.79、mean reward 140.69、无 NaN/Traceback/OOM）、旧 std 失控/reward 爆点、历史 PhysX NaN、电机固定 limit 问题和未跨过的长训练风险。
 - 明确排除本地 `.codex/` 和 `artifacts/` 生成产物；reset dataset、USD、电机/recovery 代码、测试和文档均已纳入提交。
+- 用户授权后将 PR 转 Ready 并 squash merge 到 `main`，merge commit `46edeee`；本地/远端 main 已同步，功能分支已删除。
+- Merge 收尾时训练到 iteration 705，std 0.58、mean reward 189.30、catastrophic 0、无 NaN/Traceback，已跨过 iteration 650。
 
 ## 2026-07-12 删除 Recovery-Loco
 

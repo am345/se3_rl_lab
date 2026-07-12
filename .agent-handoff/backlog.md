@@ -1,7 +1,7 @@
 # Task Backlog
 
 - [x] 停止 `recovery_motor_tn_fresh_5k`；新增 Recovery 专用 PPO 配置，对齐参考的 `0.5/0.00516/3e-4/0.008`，保留 MLP/24-step rollout，并完成 4096-env gate。
-- [ ] 监控 `recovery_ref_std_fresh_5k` 跨过 iteration 210、500、650、835、1500、2000、5000；检查 std、NaN/OOM、catastrophic 比例、dataset 混入和 checkpoints。
+- [ ] 监控 `recovery_ref_std_fresh_5k` 跨过 iteration 835、1500、2000、5000；iteration 705 前 std/NaN/catastrophic 健康，后续继续检查 dataset 混入和 checkpoints。
 - [ ] 5k 完成后运行同一 flat-basic/recovery suite，比较 linear/yaw RMSE、自起成功率并录制 MP4。
 
 - [x] 迁移腿部 DM-8009P 四象限 DC motor 与轮部 M3508+C620 14:1 实测 T-N 曲线，保持 policy/action 合同不变。

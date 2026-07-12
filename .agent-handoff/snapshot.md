@@ -2,9 +2,9 @@
 
 ## Current State
 
-- Last updated: 2026-07-12 16:18（Asia/Shanghai）
+- Last updated: 2026-07-12 16:23（Asia/Shanghai）
 - Workspace: 本机 `D:\RoboMaster\se3_rl_lab`；训练机 SSH alias `se3_rl_lab_gpufree`；远端根目录 `/root/gpufree-data/se3-workspace/se3_rl_lab`。
-- Git: branch `codex/recovery-motor-model`；Draft PR [#9](https://github.com/am345/se3_rl_lab/pull/9)；首个实现提交 `e506dda`。
+- Git: PR [#9](https://github.com/am345/se3_rl_lab/pull/9) 已 squash merge 到 `main`，merge commit `46edeee`；远端功能分支已删除，本地位于 `main`。
 - Current objective: 使用已迁移的腿/轮 T-N 电机模型，从头训练 5000 iterations 的 `SerialLeg-Recovery-v0`，并抑制旧 run 的 action std 失控。
 - Current status: 旧 run 已停止；Recovery 专用 PPO 配置已落地并通过 4096-env 单更新门禁；新 5k 正在运行。
 
@@ -15,7 +15,7 @@
 - Log: `/tmp/recovery_ref_std_fresh_5k.log`
 - Run directory: `/root/gpufree-data/se3-workspace/se3_rl_lab/logs/rsl_rl/serialleg_flat_closed_chain/2026-07-12_16-00-33_recovery_ref_std_fresh_5k`
 - Contract: fresh seed 42、4096 env、5000 iterations、`resume=false`、save interval 500。
-- PR 正文快照更新到 iteration 487：std 0.79、mean reward 140.69、catastrophic/NaN/Traceback/OOM 均为 0；std 已从 iteration 314 的 0.89 回落。
+- Post-merge health: iteration 705，std 0.58、mean reward 189.30、catastrophic/NaN/Traceback 均为 0；已跨过 iteration 650，下一历史敏感窗口为 835。
 
 ## Configuration Change
 
@@ -37,7 +37,7 @@
 
 ## Next Actions / Risks
 
-1. 监控新 run 的 iteration 100，并继续跨过 210、650、835、1500、2000、5000，重点检查 std、NaN、catastrophic termination 与 dataset 混入。
+1. 继续监控新 run 跨过 iteration 835、1500、2000、5000，重点检查 std、NaN、catastrophic termination 与 dataset 混入。
 2. 在 model 500 处检查六维 std 参数，确认轮 action 噪声未再次进入长期饱和区。
 3. 5k 完成后运行同一 recovery eval，比较 linear/yaw RMSE、自起成功率并录制 MP4。
 4. 当前无 blocker；尚未跨过历史敏感窗口，因此不能提前宣称长训练稳定性已验收。
