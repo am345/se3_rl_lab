@@ -29,7 +29,9 @@ from isaaclab_tasks.utils.hydra import load_cfg_from_registry
 
 import se3_rl_lab.tasks  # noqa: F401
 from se3_rl_lab.assets.robots.serialleg_contract import SERIALLEG_CONTRACT
+from se3_rl_lab.isaac_eval.camera import translated_follow_view, widened_focal_length
 from se3_rl_lab.isaac_eval.collision_preview import spawn_collision_preview
+from se3_rl_lab.isaac_eval.schedule import configure_fixed_command_eval, set_command_and_refresh_observations
 from se3_rl_lab.tools.reports import evaluation_score, write_evaluation_report
 from se3_rl_lab.tools.rerun_export import export_rerun
 
@@ -67,32 +69,31 @@ def _virtual_root_drift(robot) -> float:
     return float(torch.abs(robot.data.joint_pos[:, ids]).max().item())
 
 
-def _set_command(env, vx: float, yaw_rate: float, height: float) -> None:
-    term = env.command_manager.get_term("velocity_height")
-    term._command[:, :] = 0.0
-    term._command[:, 0] = vx
-    term._command[:, 1] = yaw_rate
-    term._command[:, 4] = height
-
-
 def _update_follow_camera(sim, robot) -> None:
-    """Keep a side-rear camera at a fixed offset in the robot yaw frame."""
-    root_position = robot.data.root_pos_w[0]
-    root_quaternion = robot.data.root_quat_w[0]
-    w, x, y, z = (float(value.item()) for value in root_quaternion)
-    yaw = math.atan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z))
-    lateral_distance = -2.4
-    eye = (
-        float(root_position[0].item()) - math.sin(yaw) * lateral_distance,
-        float(root_position[1].item()) + math.cos(yaw) * lateral_distance,
-        float(root_position[2].item()) + 0.57,
-    )
-    target = (
-        float(root_position[0].item()),
-        float(root_position[1].item()),
-        float(root_position[2].item()),
-    )
+    """Follow root translation while keeping the camera's world orientation fixed."""
+    root_position = tuple(float(value.item()) for value in robot.data.root_pos_w[0])
+    eye, target = translated_follow_view(root_position)
     sim.set_camera_view(eye=eye, target=target)
+
+
+def _configure_camera_fov(camera_prim_path: str = "/OmniverseKit_Persp") -> None:
+    """Increase the default viewport camera's horizontal FOV by 30 percent."""
+    import omni.usd
+    from pxr import UsdGeom
+
+    stage = omni.usd.get_context().get_stage()
+    camera = UsdGeom.Camera.Get(stage, camera_prim_path)
+    if not camera.GetPrim().IsValid():
+        raise RuntimeError(f"eval camera prim does not exist: {camera_prim_path}")
+    aperture = float(camera.GetHorizontalApertureAttr().Get())
+    focal_length = float(camera.GetFocalLengthAttr().Get())
+    widened_focal, old_fov, new_fov = widened_focal_length(aperture, focal_length)
+    camera.GetFocalLengthAttr().Set(widened_focal)
+    print(
+        f"[eval-camera] translation_only=true horizontal_fov_deg={old_fov:.2f}->{new_fov:.2f} "
+        f"focal_length={focal_length:.3f}->{widened_focal:.3f}",
+        flush=True,
+    )
 
 
 def _scenario_summary(name: str, samples: list[dict]) -> dict:
@@ -128,7 +129,13 @@ def main() -> int:
     env_cfg.sim.use_fabric = False
     env_cfg.seed = 47
     env_cfg.log_dir = str(run_dir)
+    env_cfg.observations.actor.enable_corruption = False
     env_cfg.commands.velocity_height.debug_vis = True
+    configure_fixed_command_eval(
+        env_cfg,
+        scenario_count=len(SCENARIOS),
+        scenario_duration_s=float(context["scenario_duration_s"]),
+    )
     reset_base_params = env_cfg.events.reset_base.params
     if "pose_range" in reset_base_params:
         reset_base_params["pose_range"] = {
@@ -154,10 +161,10 @@ def main() -> int:
     runner = OnPolicyRunner(env, agent_cfg.to_dict(), log_dir=None, device=agent_cfg.device)
     runner.load(str(checkpoint))
     policy = runner.get_inference_policy(device=unwrapped.device)
-    obs = env.get_observations()
     robot = unwrapped.scene["robot"]
     collision_preview.update(robot)
     _update_follow_camera(unwrapped.sim, robot)
+    _configure_camera_fov()
     samples: list[dict] = []
     scenarios: list[dict] = []
     global_step = 0
@@ -166,8 +173,14 @@ def main() -> int:
         for scenario_name, vx, yaw_rate, height in SCENARIOS:
             scenario_samples = []
             steps = max(1, round(float(context["scenario_duration_s"]) / unwrapped.step_dt))
+            obs = set_command_and_refresh_observations(
+                env,
+                unwrapped,
+                vx=vx,
+                yaw_rate=yaw_rate,
+                height=height,
+            )
             for _ in range(steps):
-                _set_command(unwrapped, vx, yaw_rate, height)
                 collision_preview.update(robot)
                 _update_follow_camera(unwrapped.sim, robot)
                 actions = policy(obs)

@@ -1,8 +1,19 @@
 # Task Backlog
 
 - [x] 停止 `recovery_motor_tn_fresh_5k`；新增 Recovery 专用 PPO 配置，对齐参考的 `0.5/0.00516/3e-4/0.008`，保留 MLP/24-step rollout，并完成 4096-env gate。
-- [ ] 监控 `recovery_ref_std_fresh_5k` 跨过 iteration 835、1500、2000、5000；iteration 705 前 std/NaN/catastrophic 健康，后续继续检查 dataset 混入和 checkpoints。
-- [ ] 5k 完成后运行同一 flat-basic/recovery suite，比较 linear/yaw RMSE、自起成功率并录制 MP4。
+- [x] 监控 `recovery_ref_std_fresh_5k`：run 在 iteration 3195 发生巨额有限 reward 级联污染，并于 3606 后退出，未完成 5000；model3500 无效。
+- [x] 不做兜底复现污染：fresh seed-42 PPO 探针确认 actor mean 已离开物理动作域，最终打爆右闭链并由 `r_drive_bar_Joint` 首爆；已排除 Gaussian 尾部与 cache/reset 第一拍。`last_actions` 是放大通道，但尚未证明为唯一首因。
+- [x] 按用户授权完整迁移 height-conditioned default 的几何/cache/command/reset/action/reward/eval contract，并完成参考数值、64-env mixed reset 与 4096-env PPO gates。
+- [x] 监控 fresh `recovery_height_default_fresh_5k` 至完成：iteration 4999 reward 259.81、std 0.33、catastrophic 0，健康跨过 476/3195；最终 checkpoint 为 `model_4999.pt`。
+- [x] 修复 eval-only observation corruption：worker 创建环境前设置 actor `enable_corruption=False`，训练期 noise 不变；补回归并完成 model2000 无噪 MP4 重录。
+- [x] 新训练已从 seed-42 新进程启动，同时加载 height default 与 yaw 大误差梯度语义；未 resume 旧 checkpoint。
+- [x] 录制并检查 `model_1000.pt` 的 6 场景 recovery eval MP4/metrics；本地产物位于 `artifacts/recovery_eval/model_1000-*`。
+- [x] 将 eval camera 改为只平移、不随 yaw 旋转，并把水平 FOV 扩大 30%；完整重录与转向双帧检查通过。
+- [x] 修复 24 秒 eval 撞上 20 秒 episode timeout、训练命令重采样污染和场景边界 observation 滞后一帧；model 1000 完整回归为 0 termination/0 command mismatch。
+- [ ] 对最终 `model_4999.pt` 运行完整 6×4 秒 suite，并与 model1000/model2000 的 linear/yaw RMSE、survival 和 MP4 对比；当前只完成无视频 400-step 稳态抖动探针。
+- [ ] 经用户确认后，将 eval camera 改为只跟随 root x/y、锁定 z；当前仅有不改生产源码的 6 秒诊断 MP4，证明背景垂直抖动约降 81%。
+- [ ] 设计真实控制抖动修复：优先评审训练内 action rate limiter/low-pass 与更强平滑约束，fresh retrain 后以 4–5 Hz actor/target/pitch/contact 主峰为验收指标；不要只对旧 checkpoint 做 eval-only 滤波。
+- [ ] 下次 SSH 恢复后确认并清理远端 `/tmp/jitter_probe*`、`/tmp/se3_camera_z_diag`；本机诊断临时文件已清理。
 
 - [x] 迁移腿部 DM-8009P 四象限 DC motor 与轮部 M3508+C620 14:1 实测 T-N 曲线，保持 policy/action 合同不变。
 - [x] 用显式电机模型跑 4096-env/1-update gate，并从头启动 recovery 5k。

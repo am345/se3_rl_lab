@@ -13,6 +13,10 @@
 checkpoint 的 action/observation/PPO 接口，只迁移 Recovery-Discovery reward、全姿态 reset，以及
 `time_out + catastrophic_state` termination。
 
+Recovery 的 yaw tracking 保留 25-term 合同中的权重与直立门控，但启用参考 flat reward 的大误差梯度语义：
+`sigma_eff = sigma * (1 + 0.4 * |cmd_yaw|)`，并将 80% 指数精度项与 20% 比例方向项混合。参考
+Recovery-Discovery 配置原本将这两个参数设为零；这里是为了避免高 yaw 命令下纯指数核梯度消失而做的显式偏离。
+
 Recovery reset 使用随仓库交付的 `serialleg_closedchain_stair_v3_40k.npz`（20k train/20k eval）与标准
 五姿态混合课程。完整 joint reset 会同步写入 policy、passive、wheel 和 virtual tendon-root position/velocity；
 cache 比例在 iteration `1500/2000/2600/3400/4200` 提升到 `10%/25%/45%/60%/70%`。
@@ -109,9 +113,9 @@ uv run se3rl eval <run> --checkpoint 499 --scenario-duration 0.5
 - `yaw_right`
 - `forward_turn`
 
-评估使用独立 Isaac Sim worker，固定为 1 个 environment 和 seed 47。worker 直接写入严格 8D `velocity_height` command，不修改训练环境合同。
+评估使用独立 Isaac Sim worker，固定为 1 个 environment 和 seed 47。worker 直接写入严格 8D `velocity_height` command，不修改训练环境合同。worker 会在创建环境前把 episode timeout 与 command resampling 推迟到整套场景结束之后；每次切换场景时，先写入新命令并刷新 policy observation，再执行第一次推理。因此默认 6×4 秒录制不会在第 20 秒触发 reset，也不会被训练用的 5 秒命令重采样污染。
 
-评估会启用 `VelocityHeightCommand.debug_vis`：绿色箭头表示目标平面速度，蓝色箭头表示机器人实际平面速度。默认 marker 基准 scale 为 `(1.0, 0.18, 0.18)`，速度长度倍率为 `3.0`，位于机器人上方 `0.35 m`。录制相机按机器人当前 yaw 保持侧后方 `2.4 m`、上方 `0.57 m` 的相对位置，每个控制步跟随根节点平移和转向。为保证 marker 在相机录制中稳定可见，eval-only 配置固定初始 x/y/yaw 并关闭 Fabric；训练配置仍保留随机 reset 和 Fabric。
+评估会启用 `VelocityHeightCommand.debug_vis`：绿色箭头表示目标平面速度，蓝色箭头表示机器人实际平面速度。默认 marker 基准 scale 为 `(1.0, 0.18, 0.18)`，速度长度倍率为 `3.0`，位于机器人上方 `0.35 m`。录制相机保持世界坐标朝向固定，只按机器人 root 位移平移，eye offset 为 `(0.0, -2.4, 0.57) m`；水平 FOV 在默认值上扩大 30%。为保证 marker 在相机录制中稳定可见，eval-only 配置固定初始 x/y/yaw 并关闭 Fabric；训练配置仍保留随机 reset 和 Fabric。
 
 ### Collision-only 渲染
 

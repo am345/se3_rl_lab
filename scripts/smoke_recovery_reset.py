@@ -25,6 +25,10 @@ from se3_rl_lab.assets.robots.serialleg_contract import SERIALLEG_CONTRACT  # no
 from se3_rl_lab.tasks.manager_based.se3_rl_lab.mdp.fourbar_reset import (  # noqa: E402
     policy_to_passive_pos,
 )
+from se3_rl_lab.tasks.manager_based.se3_rl_lab.mdp.height_defaults import (  # noqa: E402
+    get_height_default,
+    policy_default_from_height,
+)
 from se3_rl_lab.tasks.manager_based.se3_rl_lab.mdp.recovery_events import (  # noqa: E402
     RECOVERY_PASSIVE_JOINTS,
 )
@@ -39,6 +43,20 @@ def main() -> None:
     unwrapped.common_step_counter = int(ARGS.iteration) * 24
     observations, _ = env.reset()
     robot = unwrapped.scene["robot"]
+    action_term = unwrapped.action_manager.get_term("serialleg_delayed")
+    if not action_term.cfg.height_conditioned_action_default:
+        raise RuntimeError("Recovery action term did not enable height-conditioned defaults")
+    command = unwrapped.command_manager.get_command("velocity_height")
+    reference_default = policy_default_from_height(command[:, 4])
+    cached_default = get_height_default(
+        unwrapped,
+        "velocity_height",
+        device=unwrapped.device,
+        dtype=reference_default.dtype,
+    )
+    height_default_error = float(torch.max(torch.abs(cached_default - reference_default)))
+    if height_default_error > 2.0e-6:
+        raise RuntimeError(f"height-default cache mismatch: {height_default_error:.3e} rad")
     wheel_body_ids, _ = robot.find_bodies(("l_wheel_Link", "r_wheel_Link"), preserve_order=True)
     wheel_pos_w = robot.data.body_link_pos_w[:, wheel_body_ids, :]
     wheel_bottom = wheel_pos_w[:, :, 2] - unwrapped.scene.env_origins[:, 2].unsqueeze(1) - 0.06
@@ -101,6 +119,12 @@ def main() -> None:
         if any(not torch.isfinite(value).all() for value in observations.values()):
             raise RuntimeError(f"non-finite observation at step={step}")
         max_reward = max(max_reward, float(torch.max(torch.abs(reward))))
+    if policy is None and ARGS.action_std == 0.0:
+        zero_action_target_error = float(torch.max(torch.abs(action_term.leg_targets - reference_default)))
+        if zero_action_target_error > 2.0e-6:
+            raise RuntimeError(f"zero action does not decode to height default: {zero_action_target_error:.3e} rad")
+    else:
+        zero_action_target_error = 0.0
     print(
         "[recovery-reset-smoke] "
         f"envs={ARGS.num_envs} iteration={ARGS.iteration} cache_ratio={actual_cache:.3f} "
@@ -109,6 +133,8 @@ def main() -> None:
         f"passive_error={passive_error:.3e} tendon_pos={tendon_pos:.3e} "
         f"tendon_vel={tendon_vel:.3e} max_abs_reward={max_reward:.3f} passed=true"
         f" wheel_clearance_after_min={min_wheel_bottom:.4f}"
+        f" height_default_error={height_default_error:.3e}"
+        f" zero_action_target_error={zero_action_target_error:.3e}"
     )
     env.close()
 

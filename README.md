@@ -66,7 +66,9 @@ command 默认保持关闭，其 3 个 jump slots 为零，不接入跳跃奖励
 curriculum 和 feed-forward PPO 合同，仅替换以下三部分：
 
 - reward：迁移 `se3_rl` 的 `se3_wheel_leg_spring_add` 分支中 Recovery-Discovery 的完整 25-term 配置
-  （其中 `diagnostics` 恒返回零，只记录合同占位），名称、权重和主要门控参数保持一致；
+  （其中 `diagnostics` 恒返回零，只记录合同占位），名称、权重和主要门控参数保持一致；角速度跟踪额外启用
+  同一参考分支 flat reward 的大误差梯度语义：`sigma_cmd_scale=0.4`、`ratio_blend=0.2`，同时保留 Recovery
+  的 `1.5` 权重和直立门控；
 - reset：按 `standing/left-side/right-side/prone/supine = 8%/17%/17%/29%/29%` 混合标准姿态，
   并从 iteration 1500 起逐步混入 40k settled-state dataset；标准样本按课程随机化完整 policy/passive/wheel
   joint state，dataset 按 joint name恢复 root 与 10-joint position/velocity，IsaacLab 额外的两个 tendon-root

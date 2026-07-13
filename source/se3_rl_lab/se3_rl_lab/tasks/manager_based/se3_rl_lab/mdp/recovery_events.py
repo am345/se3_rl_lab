@@ -17,6 +17,7 @@ from se3_rl_lab.assets.robots.serialleg import SERIALLEG_POLICY_LEG_JOINTS, SERI
 from se3_rl_lab.assets.robots.serialleg_contract import SERIALLEG_CONTRACT
 
 from .fourbar_reset import policy_to_passive_pos, policy_to_passive_vel
+from .height_defaults import get_height_default, update_height_default_cache
 
 RECOVERY_CACHE_PATH = (
     Path(__file__).parents[4] / "assets/robots/serialleg/recovery_states/serialleg_closedchain_stair_v3_40k.npz"
@@ -203,6 +204,15 @@ def reset_recovery_joints(
     randomize = torch.rand(env_ids.numel(), device=env.device) < randomize_prob
     policy_pos = joint_pos[:, policy_ids].clone()
     policy_vel = torch.zeros_like(policy_pos)
+    update_height_default_cache(env, "velocity_height", env_ids=env_ids)
+    policy_pos.copy_(
+        get_height_default(
+            env,
+            "velocity_height",
+            device=env.device,
+            dtype=joint_pos.dtype,
+        )[env_ids]
+    )
     if torch.any(randomize):
         rows = torch.nonzero(randomize, as_tuple=False).flatten()
         policy_pos[rows, 0] += torch.empty(rows.numel(), device=env.device).uniform_(-math.pi, math.pi)

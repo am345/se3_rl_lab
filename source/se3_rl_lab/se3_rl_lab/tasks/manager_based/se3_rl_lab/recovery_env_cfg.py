@@ -51,6 +51,8 @@ class RecoveryRewardsCfg:
         params={
             "command_name": "velocity_height",
             "sigma": 0.25,
+            "sigma_cmd_scale": 0.4,
+            "ratio_blend": 0.2,
             "asset_cfg": _ROBOT,
             "upright_full_cos": _UPRIGHT_15_COS,
         },
@@ -98,7 +100,11 @@ class RecoveryRewardsCfg:
         weight=-1.0e-4,
         params={"asset_cfg": _WHEELS, "max_torque": 3.0},
     )
-    joint_mirror = RewTerm(func=mdp.recovery_joint_mirror, weight=-0.05, params={"asset_cfg": _LEGS})
+    joint_mirror = RewTerm(
+        func=mdp.recovery_joint_mirror,
+        weight=-0.05,
+        params={"command_name": "velocity_height", "asset_cfg": _LEGS},
+    )
     dof_pos_limits = RewTerm(func=mdp.recovery_dof_pos_limits, weight=-5.0, params={"asset_cfg": _LEGS})
     collision = RewTerm(
         func=mdp.recovery_contact_count,
@@ -158,6 +164,8 @@ class RecoveryEnvCfg(Se3RlLabEnvCfg):
 
     def __post_init__(self) -> None:
         super().__post_init__()
+        self.actions.serialleg_delayed.height_conditioned_action_default = True
+        self.actions.serialleg_delayed.action_default_command_name = "velocity_height"
         self.events.reset_base = EventTerm(
             func=mdp.reset_root_state_recovery_mixed,
             mode="reset",

@@ -15,6 +15,9 @@ from isaaclab.utils.math import wrap_to_pi
 
 from se3_rl_lab.assets.robots.serialleg_contract import SERIALLEG_CONTRACT
 
+from .height_defaults import get_height_default
+from .reward_math import angular_tracking_reward
+
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
 
@@ -35,6 +38,15 @@ def _robot(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> Articulation:
 
 def _command(env: ManagerBasedRLEnv, name: str) -> torch.Tensor:
     return env.command_manager.get_command(name)
+
+
+def _height_default(env: ManagerBasedRLEnv, command_name: str, robot: Articulation) -> torch.Tensor:
+    return get_height_default(
+        env,
+        command_name,
+        device=robot.data.joint_pos.device,
+        dtype=robot.data.joint_pos.dtype,
+    )
 
 
 def _upright_factor(projected_gravity_z: torch.Tensor) -> torch.Tensor:
@@ -66,13 +78,23 @@ def recovery_tracking_ang_vel(
     env: ManagerBasedRLEnv,
     command_name: str,
     sigma: float,
+    sigma_cmd_scale: float,
+    ratio_blend: float,
     asset_cfg: SceneEntityCfg,
     upright_full_cos: float,
 ) -> torch.Tensor:
     robot = _robot(env, asset_cfg)
-    error = robot.data.root_ang_vel_b[:, 2] - _command(env, command_name)[:, 1]
+    command = _command(env, command_name)[:, 1]
+    error = robot.data.root_ang_vel_b[:, 2] - command
     gate = torch.clamp(-robot.data.projected_gravity_b[:, 2], 0.0, upright_full_cos) / upright_full_cos
-    return torch.exp(-(error**2) / sigma) * gate
+    return angular_tracking_reward(
+        error,
+        command,
+        gate,
+        sigma=sigma,
+        sigma_cmd_scale=sigma_cmd_scale,
+        ratio_blend=ratio_blend,
+    )
 
 
 def recovery_upward(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
@@ -152,7 +174,7 @@ def recovery_stand_still(
     robot = _robot(env, asset_cfg)
     stationary = torch.linalg.vector_norm(_command(env, command_name)[:, :2], dim=1) < command_threshold
     error = torch.sum(
-        (robot.data.joint_pos[:, asset_cfg.joint_ids] - robot.data.default_joint_pos[:, asset_cfg.joint_ids]) ** 2,
+        (robot.data.joint_pos[:, asset_cfg.joint_ids] - _height_default(env, command_name, robot)) ** 2,
         dim=1,
     )
     return error * _upright_factor(robot.data.projected_gravity_b[:, 2]) * stationary.float()
@@ -167,7 +189,7 @@ def recovery_joint_pos_penalty(
 ) -> torch.Tensor:
     robot = _robot(env, asset_cfg)
     error = torch.linalg.vector_norm(
-        robot.data.joint_pos[:, asset_cfg.joint_ids] - robot.data.default_joint_pos[:, asset_cfg.joint_ids], dim=1
+        robot.data.joint_pos[:, asset_cfg.joint_ids] - _height_default(env, command_name, robot), dim=1
     )
     stationary = torch.linalg.vector_norm(_command(env, command_name)[:, :2], dim=1) < command_threshold
     scale = torch.where(stationary, stand_still_scale, 1.0)
@@ -219,10 +241,10 @@ def recovery_wheel_torque_excess(env: ManagerBasedRLEnv, asset_cfg: SceneEntityC
     return torch.sum(torch.clamp(torque - max_torque, min=0.0) ** 2, dim=1)
 
 
-def recovery_joint_mirror(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
+def recovery_joint_mirror(env: ManagerBasedRLEnv, command_name: str, asset_cfg: SceneEntityCfg) -> torch.Tensor:
     robot = _robot(env, asset_cfg)
     pos = robot.data.joint_pos[:, asset_cfg.joint_ids]
-    default = robot.data.default_joint_pos[:, asset_cfg.joint_ids]
+    default = _height_default(env, command_name, robot)
     diff = (pos[:, :2] - default[:, :2]) + (pos[:, 2:4] - default[:, 2:4])
     return torch.mean(diff**2, dim=1) * _upright_factor(robot.data.projected_gravity_b[:, 2])
 

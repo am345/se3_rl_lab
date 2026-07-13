@@ -15,6 +15,8 @@ from isaaclab.utils import configclass
 
 from se3_rl_lab.assets.robots.serialleg_contract import SERIALLEG_CONTRACT
 
+from .height_defaults import get_height_default
+
 
 def _required_action_scale(group_name: str) -> float:
     scale = SERIALLEG_CONTRACT.actuator_groups[group_name].action_scale
@@ -172,7 +174,16 @@ class SerialLegDelayedAction(ActionTerm):
         self._action_fifo[0].copy_(self._raw_actions)
         self._processed_actions.copy_(self._action_fifo[self._delay_steps, self._env_ids])
 
-        defaults = self._asset.data.default_joint_pos[:, self._leg_joint_ids]
+        defaults = (
+            get_height_default(
+                self._env,
+                self.cfg.action_default_command_name,
+                device=self.device,
+                dtype=self._processed_actions.dtype,
+            )
+            if self.cfg.height_conditioned_action_default
+            else self._asset.data.default_joint_pos[:, self._leg_joint_ids]
+        )
         self._leg_targets.copy_(defaults)
         for (
             first_index,
@@ -184,7 +195,12 @@ class SerialLegDelayedAction(ActionTerm):
             active_upper,
         ) in self._tendon_specs:
             front_target = defaults[:, first_index] + self._processed_actions[:, first_index] * self.cfg.leg_scale
-            active_target = (active_midpoint + self._processed_actions[:, second_index] * self.cfg.leg_scale).clamp(
+            active_default = (
+                first_coefficient * defaults[:, first_index] + second_coefficient * defaults[:, second_index]
+                if self.cfg.height_conditioned_action_default
+                else active_midpoint
+            )
+            active_target = (active_default + self._processed_actions[:, second_index] * self.cfg.leg_scale).clamp(
                 active_lower - self.cfg.active_rod_lower_target_overdrive, active_upper
             )
             self._leg_targets[:, first_index] = front_target
@@ -233,6 +249,8 @@ class SerialLegDelayedActionCfg(ActionTermCfg):
     leg_scale: float = _LEG_ACTION_SCALE
     wheel_scale: float = _WHEEL_ACTION_SCALE
     action_clip: float | None = 100.0
+    height_conditioned_action_default: bool = False
+    action_default_command_name: str = "velocity_height"
     action_delay_enabled: bool = True
     action_delay_s: float = 0.005
     action_delay_randomize: bool = True

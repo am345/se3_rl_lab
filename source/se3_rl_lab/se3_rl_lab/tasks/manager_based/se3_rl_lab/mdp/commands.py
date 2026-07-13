@@ -106,6 +106,20 @@ class VelocityHeightCommand(CommandTerm):
             self._command[moving_ids, 3] = self._sample_uniform(moving_count, self.cfg.roll_range)
             self._command[moving_ids, 4] = self._sample_uniform(moving_count, self.cfg.height_range)
 
+        self.refresh_height_default_cache(env_ids)
+
+    def refresh_height_default_cache(self, env_ids: Sequence[int] | torch.Tensor | None = None) -> torch.Tensor:
+        """Synchronize action/reset/reward defaults after a command-height change."""
+        from .height_defaults import update_height_default_cache
+
+        ids = None if env_ids is None else torch.as_tensor(env_ids, dtype=torch.long, device=self.device)
+        return update_height_default_cache(
+            self._env,
+            "velocity_height",
+            env_ids=ids,
+            command=self._command,
+        )
+
     def _sample_uniform(self, count: int, value_range: tuple[float, float]) -> torch.Tensor:
         return torch.empty(count, device=self.device).uniform_(*value_range)
 

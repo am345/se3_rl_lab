@@ -1,28 +1,38 @@
 # Risks, Blockers, And Unknowns
 
-## 2026-07-12 recovery 参考参数 fresh 5k 风险
+## 2026-07-12 recovery height-default fresh 5k 结果与抖动风险
+
+- model2000 旧 noisy MP4 不应直接解读为无噪部署行为；eval worker 已修复并重录无噪版本。但无噪确定性 actor 的稳态 4–5 Hz 极限环仍存在，关闭 eval noise 不能视作视觉或控制抖动已解决。
+
+- 新 run `recovery_height_default_fresh_5k` 已健康完成 5000 iterations，最终 model4999 catastrophic 0；这证明本轮没有复发 3195 级联污染，但不代表控制质量平滑。model4999 forward action/target delta RMS 比 model2000 更高，真实抖动仍未解决。
+- production eval camera 当前跟随 root x/y/z；root-z 的毫米级 4–5 Hz 振荡会带动整个背景，显著放大观感。只锁 camera z 的诊断将背景垂直逐帧位移约降 81%，但它只修录像，不修真实控制。
+- 稳态 A/B 只观测到左右轮接地；no-delay、Kd=6、zero-restitution 均未消除 root-z/pitch 极限环。不要再把复杂 collision mesh 误触地、随机 delay 或 restitution 表述为已确认根因。
+- 训练产物与 log 仍按 snapshot 路径追踪，重要 checkpoint 受 GPUFree 数据盘持久性风险影响；释放实例前应备份 `model_4999.pt`。
+- 23:15 后 SSH alias `se3_rl_lab_gpufree` 突然无输出、exit 1；训练完成状态和 checkpoint SHA 已在断连前确认。仅远端 `/tmp` 诊断 scratch 清理未验证，生产 run 不受影响。
 
 - 旧 `recovery_motor_tn_fresh_5k` 已停止，不再作为有效训练结果；它证明原 `init_std=1.0/entropy=0.01/lr=1e-3/KL=0.01` 组合会伴随 std 增长和 reward 爆点。
-- 新 run 的 std 从 0.50 增至 iteration 314 的 0.89，随后在 iteration 427 回落到 0.83，显著低于旧 run iteration 100 的 1.80；RSL-RL scalar std 仍无上限，必须在 iteration 500 继续确认趋势。
-- 新 run 已跨过 210/650，但尚未跨过历史敏感点 835、dataset 1500 和最终 5000；完成前不能宣称长训练稳定性已验收。
+- `recovery_ref_std_fresh_5k` 已失败：iteration 3195 起物理极端状态产生巨额有限 reward，3204 后 catastrophic 快速扩散，最终 iteration 3606 后退出。std 在首爆时仅 0.36，不能把首因归为 std。
+- 当前 catastrophic termination 阈值只决定 reset，不会 mask/cap 同一终止帧 reward；直接污染已定位为四个 active leg joints 的 `joint_acc_l2`，但用户明确要求先确认上游物理触发，不实施 cap/mask 等兜底。
 - 新配置只对齐四项已确认的随机策略参数，刻意保留当前 MLP、24-step rollout、clip 0.2、5 epochs；它不是参考 GRU/64-step PPO 的整套复制，后续效果比较需保留这个边界。
-- PID `28338` 和 `/tmp/recovery_ref_std_fresh_5k.log` 位于当前 GPUFree 实例；实例释放会中断训练，重要 checkpoint 仍需保留到持久数据盘/外部备份。
+- 源码中的 Recovery yaw reward 已改为 `sigma_cmd_scale=0.4/ratio_blend=0.2`，但失败 run 全程使用旧纯指数实现；本次崩溃与新 yaw reward 无因果关系。新语义需在安全修复后的新进程中验证。
+- 首个严重物理事件已复现并定位：actor mean 已先在 `lf0` 达 `+17.90`，随后 `rf0` 从约 `-2.4` 外飘至 `-17.74`，生成 `rf0=-4.378 rad` 目标，继而使右闭链/rf1 接触失稳并由 `r_drive_bar_Joint` 首爆。未限制的 actor mean/action-to-target 路径是已确认的上游污染源；`last_actions` 参与放大，但最初触发早于 32-step 窗口，尚未证明其为唯一首因。
+- reward cap/mask 只能阻断 PPO 二次污染，不能消除上述 actor/物理触发；termination/reset 修改也不是当前证据指向的首因。后续方案必须区分根因修复与可选的训练安全隔离。
 
 ## 2026-07-12 电机模型迁移后风险
 
-- 新显式 actuator 已通过 4096-env PPO 单更新 gate并进入正式长训练；闭链接触稳定性、catastrophic 比例和 NaN 风险仍需跨历史窗口定标。
+- 新显式 actuator 已通过 4096-env gate 与完整 5k，catastrophic/NaN 风险跨历史窗口验收通过；剩余主要风险是策略以高频动作维持动态平衡，而非数值发散。
 - 旧 `model_1999.pt`/loco finetune checkpoint 来自 implicit/static-limit dynamics。网络结构仍兼容，但其行为不能代表新电机模型的训练结果，正式比较应从头训练。
 - 轮曲线在 `|speed| <= 32.93 rad/s` 仍允许 `3.71 N·m`，因此缺失曲线不是低速 tracking error 的充分解释；腿 DC motor、控制动态、reward/command 等仍可能影响结果。
 
 ## 2026-07-12 10:30 活跃风险
 
 - wheel clearance 是应保留的参考 reset 行为，但已证实不是本次 NaN 根因；旧 handoff 中的因果表述已被本节取代。
-- 400 轮确定性 repro 已通过，但正式 run 仍需跨过 835、1500 dataset 和 2000。
+- 400 轮确定性 repro 与最终 5k 均已完成；旧“仍需跨过 2000/5000”状态已关闭。
 - 当前 PPO 与参考 recovery PPO 不同（用户此前限定只迁移 reward/reset/termination）；本轮未修改 PPO。训练质量需与崩溃修复分开评估。
 
 ## 2026-07-12 活跃风险
 
-- 新 fresh run 尚未跨过旧故障点 iteration 835；此前不能宣称长训练 NaN 已彻底解决。
+- 新 fresh run 已完成到 4999，无 NaN/catastrophic；更高 cache ratio 与长期数值稳定性已验收，控制平滑度仍单独待修。
 - 当前 IsaacLab 修复采用“保守 full-angle bbox + post-joint wheel lift”。若更高随机化阶段仍异常，应实现逐 collision-shape 最低点测量，不应添加 settle 或 `nan_to_num`。
 - dataset 从 iteration 1500 才混入，仍需独立验收该阶段。
 
@@ -35,7 +45,7 @@
 ## Current Risks
 
 - Rerun 固定为 `0.20.3`：新版 `0.31.4` 要求 NumPy 2，与 IsaacLab 0.54.4 的 NumPy `<2` 冲突。升级前必须重新验证 uv dependency split 和 `.rrd` API，不能单独抬版本。
-- 当前 `flat-basic` eval 使用 1 env/固定 seed 47，默认六个 scenario；适合 checkpoint 回归和 finetune A/B baseline，但不能替代多 seed 统计。eval 是显式 CLI worker，不会训练期自动并发，以避免与 4096-env 训练争抢 GPU。
+- 当前 `flat-basic` eval 使用 1 env/固定 seed 47，默认六个 scenario；适合 checkpoint 回归和 finetune A/B baseline，但不能替代多 seed 统计。worker 已保证 timeout/command resampling 位于完整 suite 之后，并在每个场景首步前刷新 command observation。eval 是显式 CLI worker，不会训练期自动并发，以避免与 4096-env 训练争抢 GPU。
 - MP4 依赖评估时创建 54 mesh + 2 cylinder render-only copies；资产 collision topology 改变会硬失败并要求同步更新 gate。副本不参与物理，runtime USD 未改。评估副本必须保持在独立 world-space preview 树并从 body tensor 逐步同步；不要重新挂到 replicated articulation body prim 下，否则录制画面可能与物理状态脱节。
 - eval debug markers 在 Fabric 下会触发 point-instancer prototype mismatch 并错位，因此 worker 明确 `use_fabric=False`；该设置只影响 1-env 录制，不得复制到 4096-env 训练配置。
 

@@ -1,5 +1,87 @@
 # Current Work Log
 
+## 2026-07-12 model2000/model4999 视觉与控制抖动因果诊断
+
+- 用户确认 noisy/no-noise 两段 MP4 观感均“非常抖”，因此撤回“关闭 eval observation corruption 已解决视觉抖动”的推断。逐帧蓝色轮廓、背景网格与 telemetry 均显示约 4.5–5 Hz 主峰。
+- production camera 每拍跟随 root x/y/z。相同 seed、相同前 50-step 物理轨迹仅把诊断 camera z 固定到 0.26 m 后，底部背景垂直逐帧位移 RMS `0.508→0.095 px`，约降 81%；生成 5.98 秒 H.264 诊断 MP4 `artifacts/recovery_eval/model_2000-height-default-xy-camera-diagnostic.mp4`。该实验未修改生产源码。
+- 新建并清理临时 headless probe，记录 policy raw/processed action、leg/wheel target、joint state/effort、root pose/velocity 与逐 body contact。model2000 forward 稳态 actor/leg-target/root-z/contact 同频约 `4.67 Hz`；raw action/target delta RMS `0.533/0.152`，root-z std `1.899 mm`，pitch-rate std `1.418 rad/s`。
+- 碰撞审计显示直立 baseline 仅左右轮接地，两轮法向力同相；底盘、腿和连杆无误触地。固定 restitution=0 后 root-z std `1.855 mm`。4–6 ms action delay 在 5 ms physics step 下恒定为 1 step；关闭后 root-z std `1.853 mm`。Kd `3→6` 将 leg qvel RMS `2.43→1.49 rad/s`，但 root-z std 仍 `1.887 mm`。三者都不消除极限环。
+- fresh 训练健康完成 iteration 4999：reward 259.81、value 0.1753、std 0.33、`leg_dof_acc=-0.0044`、catastrophic 0；watchdog `COMPLETE`。最终 `model_4999.pt` SHA256 `c3aed3f72be660bd44a269df04be52ed2fd063ca316886ea720bac4cc31f3027`。
+- 相同 probe 检查 model4999：forward root-z std `1.625 mm`、pitch-rate std `1.505 rad/s`、action/target delta RMS `0.666/0.204`，说明完整 5k 未消除抖动式动态平衡。参考 commit `93f6ba2` 的 PD `60/3`、wheel Kd `0.08`、4–6 ms delay、50 Hz control 与当前一致，且参考同样只有 reward 级 action rate/smoothness、无硬 low-pass。
+- 本机临时 probe 脚本、raw frames 与 contact telemetry 已清理；保留用户可看的短诊断 MP4。远端 `/tmp/jitter_probe*` 与 `/tmp/se3_camera_z_diag` 清理时 SSH alias 突然无输出退出，是否删除成功未确认，重连后应补查；均为 `/tmp` scratch，不影响 run。production control/camera 未在本轮修改。
+
+## 2026-07-12 model 2000 视频抖动诊断
+
+- Telemetry 证明六场景 command 每 200 步内严格恒定，只在场景边界切换；排除 command 重采样抖动。baseline raw action 每拍 delta RMS 为约 0.40–0.58，腿 target 为 0.10–0.16 rad，抖动在进入 PD/碰撞前已存在；运动场景腿 action 有约 4.4 Hz 主峰。
+- 固定 seed 短 A/B 的 stand steps25–49：baseline action/target/qvel/torque/contact delta RMS `0.2769/0.0597/0.4478/2.201/22.995`；no-delay `0.2784/0.0607/0.5188/2.047/17.656`；Kd=6 `0.2692/0.0591/0.3561/2.195/18.353`；zero restitution `0.2766/0.0596/0.4359/2.199/23.293`。
+- 关闭 eval actor observation corruption 后为 `0.0642/0.0246/0.0729/0.404/8.120`，action/qvel/torque 分别约降 77%/84%/82%。根因是 eval worker 沿用训练配置 `enable_corruption=True`；尤其 scaled leg velocity noise `±1.5` 等价于原速度 `±6 rad/s`。参考仓库 play 明确用 `enable_corruption=not play`。
+- 所有 `[DEBUG]`/临时 worker 字段、A/B 配置、checkpoint 副本、diag metrics/reports/logs 已删除；正式 worker 恢复并通过 Ruff，原 model2000 latest_result 已恢复。
+- 用户授权重录后，在正式 eval worker 创建环境前设置 `env_cfg.observations.actor.enable_corruption=False`；训练 cfg 不变。新增静态回归，Ruff 与 experiment/recovery `18 passed`。同一 model2000 完整重录通过，产物 `model_2000-height-default-no-noise-*` 已同步本地，旧 noisy MP4 保留。
+
+## 2026-07-12 height-conditioned default 完整迁移与 fresh 5k
+
+- 将参考仓库 height-conditioned default 作为统一 contract 迁移：参考四连杆 8192/1024 点 LUT、per-env height cache、command resample 刷新、非-cache recovery reset 基准、action 零点、三个关节姿态 reward 和固定命令 eval 刷新均使用同一 4D policy default。
+- settled-state cache rows 继续整行覆盖 root/policy/passive/wheel 状态，不强行改写为 height default；非-cache 随机化从当前 command height 对应腿型开始，随后重新求 passive joints 并执行 wheel clearance lift。
+- 参考 0.20/0.22/0.26/0.30/0.32 m 输出逐点锁定，误差阈值 `2e-6 rad`；64-env mixed reset 与 4096-env/1-update CUDA gates 通过。
+- 启动 fresh seed-42、4096-env、5000-iteration run `recovery_height_default_fresh_5k`；log `/tmp/recovery_height_default_fresh_5k.log`，run dir `2026-07-12_20-32-29_recovery_height_default_fresh_5k`。iteration 868 reward 251.18、value 0.2697、std 0.33、catastrophic 0。
+- 部署远端独立 watchdog PID `29876`，每 30 秒更新 `/tmp/recovery_height_default_watchdog.status`；明确巨额 reward/value、catastrophic 扩散或 NaN/OOM/Traceback 时自动 SIGTERM 训练，避免污染继续写入 checkpoint。
+- 对最新已落盘 `model_2000.pt` 运行完整 6×4 秒 eval 并录制 MP4；1199 frames/23.98 s/2,820,743 bytes，survival 1.0、vx/yaw RMSE 0.22453/0.37779、0 termination/non-finite。产物已同步到本地 `artifacts/recovery_eval/model_2000-height-default-*`；并行训练继续健康推进到 iteration 2299。
+
+## 2026-07-12 recovery 污染源追踪（禁止兜底）
+
+- 确认 PPO 直接污染项为 `leg_dof_acc`：它只覆盖 `lf0/l_drive_bar/rf0/r_drive_bar` 四个主动腿关节，3195 日志为 `-3.29e5`、3196 为 `-1.65e7`，后续峰值 `-9.37e20`；vertical/angular root velocity 项是次生污染。
+- IsaacLab joint velocity reset 会同步 `_previous_joint_vel` 并将 joint_acc 清零；reward 又在物理步后、reset 前读取，因此巨峰是真实 PhysX velocity jump，不是 reset history 伪差分。
+- 40k dataset 数值审计：root linear max 0.147 m/s、root angular max 0.346 rad/s、joint velocity <1 rad/s，全 finite，排除原始速度离群。
+- dataset 中 fixed-tendon 坐标确有 MuJoCo 软限位残余越界（左最大 +0.00375 rad、右 +0.00233 rad），但 64+64 A/B 显示越界组不比刚好限内组更差；加入 interior 对照后各组均为约 10³ rad/s² 首步峰值，排除“越界本身”作为独立首因。
+- 扫描全部 20k train cache rows，按真实 4 physics-substep 控制周期执行 zero delayed action：全部 finite，最大净 acceleration 854.16 rad/s²、joint velocity 16.34 rad/s、root linear/angular 0.766/4.056，0 个 catastrophic。排除任一 cache row 单独致炸。
+- 用 model3000 重建 actor：deterministic mean 跑 3000 steps/12.3M transitions、Gaussian std 跑 4000 steps/16.4M transitions，均 0 catastrophic，reward abs max 约 2.38。说明静态 checkpoint、cache/reset、随机 action tail 单独不足；触发需要 PPO 继续更新、精确 RNG 或长时 solver/contact 历史之一。
+- fresh seed-42、4096-env、保留 PPO 更新的探针在 iteration 476 可重复捕获 env 1587 严重事件：普通 reset 后 age 180、非 cache reset；`r_drive_bar_Joint=-625.29 rad/s`、`-101256 rad/s²`，`rf1_Link` 接触力 `7241 N`，passive wrapped error `2.50 rad`。
+- 动作分布探针确认 `rf0` 最终 action `-18.62` 对应 mean `-17.74`、std `0.572`、z-score `-1.52`，不是 Gaussian 尾部。32-step 历史起点 age148 时 `lf0` mean 已达 `+17.90`；age165–179 的 `rf0` mean 又为 `-2.41,-3.36,-5.37,...,-17.74`，说明 actor 整体先离开物理动作域，异常随后转移至右腿。
+- 上一拍 action 会通过 actor observation 的 `last_actions` 槽回灌并参与后续放大；但 mean 最初外飘早于已捕获窗口，且 age164→165 还伴随 leg velocity/base angular velocity 变化，因此当前证据不足以把 `last_actions` 定为唯一首因。
+- action wrapper 的 `clip_actions=None`，ActionTerm 仅在 `±100` clip；`-18.62 × 0.25` 将 `rf0` 目标推至 `-4.378 rad`。这一不可实现的腿目标先打爆右闭链，`leg_dof_acc` 再把巨额有限负 reward 写入 PPO。
+- 临时 diagnostic scripts 已从本地和远端清理；生产代码、reward/reset/termination/课程均未修改，正式训练未恢复。
+
+## 2026-07-12 recovery 5k iteration 3195 级联崩溃
+
+- PID `28338` 已退出，日志完整停在 iteration 3606；无 Python traceback/NaN check/OOM 文本。主机内存、磁盘和 GPU 当前正常，内核无本次 OOM/Xid，coredump 为空；最终退出信号 `UNKNOWN`。
+- 日志定位首个连续异常：3192 正常；3193 `leg_dof_acc` 从约 `-0.006` 到 `-0.0659`；3194 reward 77/value loss 1.44e4；3195 reward `-1.11e7`、value loss `6.97e13`、catastrophic 0.0067；3204 catastrophic 0.101，之后长期约 0.4–0.6。
+- 首因不是 std：3195 std 仅 0.36；也不是 3400 cache stage，故障早 205 iterations。cache 在 2600 起为 45%，精确的罕见物理触发样本/动作仍未知。clearance adjustment 不是充分解释，历史更大 lift 在正常期出现过。
+- 级联机制已由源码顺序确认：IsaacLab `step` 先 `termination_manager.compute()`，再 `reward_manager.compute()`，之后 reset；Recovery 的 vertical/angular velocity 与 joint acceleration L2 项无 cap。catastrophic termination 可防 NaN，但不能阻止终止帧的巨额有限 reward 进入 PPO。
+- `model_3000.pt` 是最后一个故障前 checkpoint；`model_3500.pt` 已污染。两者 actor/critic state tensors finite，3000 actor std param 0.410、3500 为 0.532，但 finite checkpoint 不等于健康策略。
+- 尝试用 checkpoint smoke 做 postmortem：首次命令因 PowerShell 变量提前展开误传 `model_.pt`，已终止并清理；第二次 model3000 runner 在 180 秒内未完成，已终止清理，未作为证据。未修改代码、未恢复训练。
+
+## 2026-07-12 Recovery yaw 大误差梯度语义
+
+- 对照 `se3_wheel_leg_spring_add@93f6ba2`：当前与参考 Recovery-Discovery 原配置均为固定 `sigma=0.25` 的纯指数 yaw reward；“高 yaw 大误差保留梯度”来自同分支 flat reward 的 `sigma_cmd_scale=0.4`、`ratio_blend=0.2`。
+- 按用户要求只迁移这两个 yaw tracking 语义；保留 Recovery term 名、权重 `1.5`、直立门控、其余 24 个 reward、command/PPO/reset/termination 不变。线速度 reward 仍使用 Recovery 的 adaptive pure-exp 语义。
+- 新增纯函数 `angular_tracking_reward`：`sigma_eff=sigma*(1+scale*|cmd|)`，再混合 exponential 与比例项。`cmd=12/error=6` 回归锁定 reward≈0.1、error gradient `<-0.01`；旧固定 sigma exp 为 `exp(-144)`，float32 下近零。
+- test-first RED 命中配置缺少两个参数；GREEN 为四组回归 `25 passed`，Ruff format/check 通过。64-env/8-step CUDA runtime gate 通过，reward/obs finite、`max_abs_reward=1.176`。
+- 正式训练 PID `28338` 未停止；到 iteration 3100 为 std 0.35、mean reward 242.08、catastrophic 0。由于 Python 进程已在启动时加载旧 reward，该 run 不包含新语义；需要新进程/重新训练才能做有效 A/B。
+
+## 2026-07-12 eval deterministic schedule bugfix
+
+- 只修改 eval 链路：新增 `isaac_eval/schedule.py`，在 `gym.make` 前将 episode timeout 与 command resampling 设到完整 suite 时长加 1 秒之后；未修改训练 task、reward、command curriculum、reset 或 termination。
+- 场景切换顺序改为“写入固定命令 → 刷新 policy observation → policy inference”，删除逐 step 重写命令的旧路径，避免边界第一步使用上一场景命令 observation。
+- test-first 红灯确认 `ModuleNotFoundError`；实现后 experiment/recovery/actuator/observation 共 `24 passed`，Ruff format/check 通过。
+- 用 `model_1000.pt` 重跑 6×4 秒完整 eval：1200 telemetry rows、0 termination、0 command mismatch（`abs_tol=1e-6`）、0 non-finite；vx/yaw RMSE 从受 timeout 污染的 `0.3206/0.4129` 降为 `0.2096/0.3345`。
+- MP4 为 H.264 1280×720@50 FPS、23.98 秒、1199 frames，已覆盖同步到 `artifacts/recovery_eval/model_1000-recovery-eval.mp4`。并行训练 PID `28338` 未停止，验证后运行到 iteration 2671。
+
+## 2026-07-12 eval camera-v2
+
+- 用户反馈 yaw-relative camera 旋转观感不适；改为固定世界 eye offset `(0.0,-2.4,0.57) m`，eye/target 每帧只加相同 root translation，不再读取 root quaternion/yaw。
+- 新增纯函数 camera geometry 模块与两项测试；水平 FOV 按角度精确乘 `1.3`，runtime 日志确认 `60.00°→78.00°`、focal length `18.148→12.939`。
+- recovery/actuator/observation/experiment tests 共 `22 passed`，相关 Ruff check/format 与 diff check 通过。
+- 完整重录 model_1000：H.264 1280×720@50 FPS、23.98 s、1199 frames、3.08 MB；yaw_left 13.0/15.5 s 抽帧的地面网格方向一致，机器人在固定世界视角内旋转，确认 camera 不随 yaw 转动。
+- 新 MP4 覆盖本地 `artifacts/recovery_eval/model_1000-recovery-eval.mp4`；训练并行运行到 iteration 1650，std 0.42、mean reward 227.82、catastrophic/NaN/Traceback 0。
+
+## 2026-07-12 model_1000 recovery eval MP4
+
+- 当前 run 不存在 `model_999.pt`，按 RSL-RL save naming 使用对应的 `model_1000.pt`。
+- 与 4096-env 训练并行完成 1-env/seed47、6 scenarios × 4 s eval；录制 H.264 1280×720@50 FPS、23.98 s、1199 frames、4.82 MB，无 eval Traceback/Error/NaN。
+- metrics: score 49.432、survival 0.9992、vx RMSE 0.3206 m/s、yaw RMSE 0.4129 rad/s、non-finite 0；仅 yaw_right 发生 1 次 termination。
+- MP4、metrics、report 和 6 s preview 已同步到本地 `artifacts/recovery_eval/model_1000-*`；抽帧确认机器人、相机与目标/实际速度箭头可见。
+- 录制结束后正式训练到 iteration 1228，std 0.46、mean reward 219.13、catastrophic/NaN/Traceback 0。
+
 ## 2026-07-12 Recovery/Motor PR
 
 - 创建分支 `codex/recovery-motor-model`，提交 `e506dda Implement recovery task and motor envelopes` 并推送到 `origin`。
