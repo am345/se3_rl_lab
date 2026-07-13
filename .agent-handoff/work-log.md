@@ -1,5 +1,12 @@
 # Current Work Log
 
+## 2026-07-13 height-conditioned recovery 提交与推送
+
+- 从同步的 `main@46edeee` 创建 `codex/height-conditioned-recovery`，明确排除未跟踪的 `.codex/` 可视化和 `artifacts/` MP4/PNG/metrics，只暂存 22 个源码、测试、文档与 handoff 文件。
+- 提交 `8f5ee8e Complete height-conditioned recovery contract`：840 insertions、60 deletions，包含 height-conditioned default 完整 contract、yaw 大误差梯度、deterministic eval schedule/camera、eval corruption 修复及回归/交接记录。
+- `git push -u origin codex/height-conditioned-recovery` 成功；分支跟踪 `origin/codex/height-conditioned-recovery`。用户只要求 commit/push，本轮未创建 PR。
+- 提交前 `uvx ruff check` 全通过，所有变更 Python 文件 `py_compile` 通过，`git diff --check` 与 staged diff check 通过。本机轻量 `.venv` 缺少 `pytest/torch/numpy`，训练机 SSH 仍不可用，因此未重复 pytest；同一代码此前远端 pytest/CUDA gates 已记录通过。
+
 ## 2026-07-12 model2000/model4999 视觉与控制抖动因果诊断
 
 - 用户确认 noisy/no-noise 两段 MP4 观感均“非常抖”，因此撤回“关闭 eval observation corruption 已解决视觉抖动”的推断。逐帧蓝色轮廓、背景网格与 telemetry 均显示约 4.5–5 Hz 主峰。

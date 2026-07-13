@@ -2,6 +2,7 @@
 
 | Date | Command/Check | Result | Notes |
 | --- | --- | --- | --- |
+| 2026-07-13 | publish preflight + `uvx ruff check` + `py_compile` + diff/staged checks + commit/push | passed | `main...origin/main=0/0` 后创建 `codex/height-conditioned-recovery`；Ruff 全通过，全部变更 Python 语法通过，diff 无 whitespace error；功能提交 `8f5ee8e` 已推送并跟踪同名 origin 分支。`.codex/`/`artifacts/` 未暂存。未创建 PR。 |
 | 2026-07-12 | local/remote diagnostic temp cleanup | local passed / remote unverified | 本机 `.codex/diagnostics` 与 `.codex/jitter_frames` 已安全删除并保留既有 `.codex/visualizations`；远端 `/tmp` cleanup 时 SSH alias 突然无输出退出，重连后补查 `/tmp/jitter_probe*` 与 `/tmp/se3_camera_z_diag`。 |
 | 2026-07-12 | watchdog/final log/checkpoint stat+SHA for `recovery_height_default_fresh_5k` | passed/complete | iteration 4999 reward 259.81、value 0.1753、std 0.33、`leg_dof_acc=-0.0044`、catastrophic 0，watchdog `COMPLETE`；`model_4999.pt` 4,441,781 bytes，SHA256 `c3aed3f7...1f3027`。 |
 | 2026-07-12 | model2000 fixed-seed 400-step per-body contact/action/PD probe + no-delay/Kd6/e0/subset A/B | source confirmed | baseline forward 为 4.67 Hz actor/target/root-z/contact 极限环；仅左右轮接地且同相。root-z std baseline/no-delay/Kd6/e0=`1.899/1.853/1.887/1.855 mm`，均未消除；400 rows 各 0 termination。临时脚本本机 `py_compile` passed。 |

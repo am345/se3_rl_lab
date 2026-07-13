@@ -2,11 +2,11 @@
 
 ## Current State
 
-- Last updated: 2026-07-12 23:15（Asia/Shanghai）
+- Last updated: 2026-07-13 09:00（Asia/Shanghai）
 - Workspace: 本机 `D:\RoboMaster\se3_rl_lab`；训练机 SSH alias `se3_rl_lab_gpufree`；远端根目录 `/root/gpufree-data/se3-workspace/se3_rl_lab`。
-- Git: PR [#9](https://github.com/am345/se3_rl_lab/pull/9) 已 squash merge 到 `main`，merge commit `46edeee`；远端功能分支已删除，本地位于 `main`。
-- Current objective: 验收已完成的 height-conditioned fresh 5k，并定位 model2000/model4999 录像中持续的 4–5 Hz 控制抖动。
-- Current status: fresh run `recovery_height_default_fresh_5k` 已健康完成 5000 iterations；最终落盘 `model_4999.pt`。抖动已定位为确定性 actor 闭环极限环，eval 相机逐帧跟随 root z 又放大了画面抖动；collision、固定 5 ms delay、Kd 和 restitution 均不是独立振荡源。未修改生产控制逻辑。
+- Git: 本地位于 `codex/height-conditioned-recovery`，跟踪同名 `origin` 分支；功能提交 `8f5ee8e`（`Complete height-conditioned recovery contract`）已推送。用户本轮只要求 commit/push，未创建 PR。
+- Current objective: height-conditioned recovery contract、评估修复、训练验收与抖动诊断已发布；下一步等待用户确认相机锁 z 与真实控制平滑方案。
+- Current status: fresh run `recovery_height_default_fresh_5k` 已健康完成 5000 iterations；最终落盘 `model_4999.pt`。抖动已定位为确定性 actor 闭环极限环，eval 相机逐帧跟随 root z 又放大了画面抖动；collision、固定 5 ms delay、Kd 和 restitution 均不是独立振荡源。生产控制逻辑未因诊断修改，相关源码/测试/文档已推送；`.codex/` 与 `artifacts/` 本地产物明确未提交。
 
 ## Completed Training
 
