@@ -5,7 +5,7 @@
 - 加载链路：ORT 改用纯 WASM 入口，WASM `26.8→13.48 MB`、前端 dist `37→24 MB`；MuJoCo idle 预热，asset/ONNX 分阶段字节进度，server HTTP/1.1 + ETag/cache + 流式文件响应。
 - 交互：WASD/方向键、Space/R/F、运动 presets、0.25–2×、跟随/侧面/正面视角、鼠标旋转/缩放、运行中 reset 和 6D action monitor。
 - 视觉：重构为以 viewport 为中心的暗色工业控制台，增加 session/command/runtime panels、loading overlay、toolbar、telemetry strip 和 responsive layout；无外部字体请求。
-- 验证：submodule backend 8 tests、frontend 8 unit、typecheck/build、真实 scale45 HTTP 25-cycle canary、HTTP cache header 与 diff check 通过。功能 `3303df8` 与发布记录 `416b534` 已推送到 submodule `main`；父仓库同步 gitlink 后转回训练端问题。
+- 验证：submodule backend 8 tests、frontend 8 unit、typecheck/build、真实 scale45 HTTP 25-cycle canary、HTTP cache header 与 diff check 通过。功能 `3303df8` 与发布记录 `416b534` 已推送到 submodule `main`；父仓库 gitlink/接力提交 `2814dfd` 已推送到 `main`，后续转回训练端问题。
 
 ## 2026-07-14 WebSim sim2sim runtime 修复
 

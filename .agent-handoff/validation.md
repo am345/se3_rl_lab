@@ -3,6 +3,7 @@
 | Date | Command/Check | Result | Notes |
 | --- | --- | --- | --- |
 | 2026-07-14 | submodule V2 scoped commit + direct `main` push | passed | 功能 `3303df8`、发布记录 `416b534` 均已推送到 `am345/websim_se3 main`。 |
+| 2026-07-14 | parent `git commit -m "Publish WebSim V2" && git push origin main` | passed | 父仓库 `2814dfd` 已推送，gitlink 锁定 submodule `416b534`；`artifacts/` 未提交。 |
 | 2026-07-14 | WebSim V2 backend/frontend/build | passed | backend 8、frontend unit 8、typecheck/build；dist 24 MB，ORT WASM 13.48 MB。 |
 | 2026-07-14 | WebSim V2 scale45 real HTTP canary | passed | frontend 共 9 tests，fallen 25 cycles/0.5 s finite/residual gate 通过。 |
 | 2026-07-14 | restarted V2 server + header/page probes + `xdg-open` | passed | session `31838`，HTTP/1.1 200、ETag/cache header 生效，新页面已打开。 |

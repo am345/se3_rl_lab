@@ -4,7 +4,7 @@
 
 - Last updated: 2026-07-14（Asia/Shanghai）
 - Workspace: 本机 `/home/am345/se3_rl_lab`；训练机 SSH alias `se3_rl_lab_gpufree`；远端根目录 `/root/gpufree-data/se3-workspace/se3_rl_lab`。
-- Git: 本地 `main`；WebSim V2 已发布到 submodule `main@416b534`，父仓库 gitlink/接力记录待本次提交推送。未跟踪 `artifacts/` 明确不提交。
+- Git: 本地/远端 `main` 已发布 WebSim V2 父仓库提交 `2814dfd`，gitlink 锁定 submodule `main@416b534`。未跟踪 `artifacts/` 明确未提交。
 - Current objective: WebSim 按 V2 当前版本收口，下一步恢复训练端问题：评估 `model_4500.pt` 的抖动、recovery 与 tracking，并决定 incomplete 5k run 的处理方式。
 - Current status: WebSim V2 功能提交 `3303df8` 与发布记录 `416b534` 已推送到 submodule `main`；ORT WASM `26.8→13.48 MB`、dist `37→24 MB`，体验改造及完整验证均完成。训练端最后可用 `model_4500.pt`，原 run 停在 iteration 4760/5000，退出原因仍为 `UNKNOWN`。
 
