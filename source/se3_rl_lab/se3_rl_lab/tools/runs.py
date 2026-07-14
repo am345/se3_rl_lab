@@ -12,6 +12,8 @@ from typing import Any
 
 CHECKPOINT_RE = re.compile(r"model_(\d+)\.pt$")
 DEFAULT_EXPERIMENT = "serialleg_flat_closed_chain"
+FLAT_OBSERVATION_DIMS = (34, 40)
+RECOVERY_OBSERVATION_DIMS = (138, 168)
 
 
 def find_repo_root(start: Path | None = None) -> Path:
@@ -92,6 +94,9 @@ class RunDirectory:
     def ensure_manifest(self, *, repo_root: Path, task: str, command: list[str]) -> dict[str, Any]:
         if self.manifest_path.is_file():
             return json.loads(self.manifest_path.read_text(encoding="utf-8"))
+        actor_observation_dim, critic_observation_dim = (
+            RECOVERY_OBSERVATION_DIMS if "Recovery" in task else FLAT_OBSERVATION_DIMS
+        )
         payload = {
             "schema_version": 1,
             "created_at": datetime.now(timezone.utc).isoformat(),
@@ -102,8 +107,8 @@ class RunDirectory:
             "git_status": _git(repo_root, "status", "--short"),
             "isaaclab_source": "../IsaacLab",
             "action_contract": "SerialLeg delayed 6D",
-            "actor_observation_dim": 34,
-            "critic_observation_dim": 40,
+            "actor_observation_dim": actor_observation_dim,
+            "critic_observation_dim": critic_observation_dim,
             "reward_profile": "recovery_discovery" if "Recovery" in task else "official_base",
         }
         _atomic_json(self.manifest_path, payload)

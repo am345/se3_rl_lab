@@ -9,9 +9,10 @@
 1. 统一 `se3rl` CLI、run/checkpoint 解析、manifest/status、Isaac Eval、collision-only MP4 和固定评估套件。
 2. 统一 telemetry、Rerun `.rrd`、best checkpoint 选择与 Markdown 报告/对比。
 
-当前不包含 Viser、MuJoCo sim2sim 和真机部署。finetune 已提供 `SerialLeg-Recovery-v0`：它保持 flat
-checkpoint 的 action/observation/PPO 接口，只迁移 Recovery-Discovery reward、全姿态 reset，以及
-`time_out + catastrophic_state` termination。
+当前不包含 Viser、MuJoCo sim2sim 和真机部署。`SerialLeg-Recovery-v0` 保持 flat 的 action 接口，但采用
+当前 8D command + 五帧 proprioception 历史：actor/critic 输入分别为 138D/168D。它还迁移
+Recovery-Discovery reward、全姿态 reset，以及 `time_out + catastrophic_state` termination。由于输入层
+形状改变，Recovery 必须创建新 run，不能直接恢复 34D/40D flat checkpoint。
 
 Recovery 的 yaw tracking 保留 25-term 合同中的权重与直立门控，但启用参考 flat reward 的大误差梯度语义：
 `sigma_eff = sigma * (1 + 0.4 * |cmd_yaw|)`，并将 80% 指数精度项与 20% 比例方向项混合。参考
@@ -44,14 +45,15 @@ export OMNI_KIT_ACCEPT_EULA=YES
 uv run se3rl train --envs 4096 --iterations 500 --run-name flat_baseline
 ```
 
-从 flat checkpoint 启动 recovery finetune：
+启动新的 Recovery 历史观测训练：
 
 ```bash
 uv run se3rl train --task SerialLeg-Recovery-v0 --envs 4096 --iterations 500 \
-  --run-name recovery_finetune --resume --load-run <flat-run> --checkpoint model_499.pt
+  --run-name recovery_history5
 ```
 
-run manifest 会把该任务记录为 `reward_profile=recovery_discovery`；flat 任务仍记录为 `official_base`。
+run manifest 会把该任务记录为 `reward_profile=recovery_discovery` 和 138D/168D observation；flat 任务仍记录
+为 `official_base` 和 34D/40D observation。
 
 恢复指定 run：
 

@@ -1,0 +1,4 @@
+[submodule "websim_se3"]
+	path = websim_se3
+	url = https://github.com/am345/websim_se3.git
+	branch = main

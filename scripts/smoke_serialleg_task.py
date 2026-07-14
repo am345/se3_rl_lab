@@ -230,9 +230,9 @@ def _validate_delayed_action_contract(env) -> None:
             raise RuntimeError(
                 f"active tendon target mismatch for {tendon.name}: {actual_coordinate} vs {expected_coordinate}"
             )
-    expected_wheel_targets = probe[:, 4:6] * 45.0
+    expected_wheel_targets = probe[:, 4:6] * 10.0
     if not torch.allclose(action_term.wheel_targets, expected_wheel_targets, atol=1.0e-6, rtol=0.0):
-        raise RuntimeError("wheel velocity target does not match legacy 45 rad/s policy scale")
+        raise RuntimeError("wheel velocity target does not match the 10 rad/s policy scale")
 
     extreme_probe = torch.zeros_like(probe)
     extreme_probe[:, 1] = 100.0
@@ -470,9 +470,9 @@ def main() -> int:
             )
         if not torch.allclose(action_term.processed_actions, action_term.raw_actions, atol=0.0, rtol=0.0):
             raise RuntimeError("one-step FIFO did not expose the latest action by the end of decimation")
-        if action_term.cfg.leg_scale != 0.25 or action_term.cfg.wheel_scale != 45.0:
+        if action_term.cfg.leg_scale != 0.25 or action_term.cfg.wheel_scale != 10.0:
             raise RuntimeError(
-                f"legacy policy scales changed: leg={action_term.cfg.leg_scale} wheel={action_term.cfg.wheel_scale}"
+                f"policy scales changed: leg={action_term.cfg.leg_scale} wheel={action_term.cfg.wheel_scale}"
             )
         expected_wheel_targets = action_term.processed_actions[:, 4:6] * action_term.cfg.wheel_scale
         if not torch.allclose(action_term.wheel_targets, expected_wheel_targets, atol=1.0e-6, rtol=0.0):

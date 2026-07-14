@@ -1,20 +1,18 @@
 # Copyright (c) 2026, SE3 RL Lab contributors.
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""SerialLeg recovery finetune task.
-
-The action, observation, command, scene, curriculum, and PPO contracts are inherited
-unchanged from the flat baseline.  Only rewards, reset semantics, and terminations
-are replaced by the recovery contract.
-"""
+"""SerialLeg recovery task with a five-frame proprioception history."""
 
 import math
 
 from isaaclab.managers import EventTermCfg as EventTerm
+from isaaclab.managers import ObservationGroupCfg as ObsGroup
+from isaaclab.managers import ObservationTermCfg as ObsTerm
 from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.utils import configclass
+from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
 from se3_rl_lab.assets.robots.serialleg import SERIALLEG_POLICY_LEG_JOINTS, SERIALLEG_WHEEL_JOINTS
 
@@ -28,6 +26,95 @@ _WHEEL_CONTACTS = SceneEntityCfg("contact_forces", body_names=["l_wheel_Link", "
 _LEG_CONTACTS = SceneEntityCfg("contact_forces", body_names=r"^(?!base_link$|[lr]_wheel_Link$).+")
 _BASE_CONTACT = SceneEntityCfg("contact_forces", body_names="base_link")
 _UPRIGHT_15_COS = math.cos(math.radians(15.0))
+
+
+@configclass
+class RecoveryObservationsCfg:
+    """Current commands plus five frames of term-major proprioception history."""
+
+    @configclass
+    class CommandCfg(ObsGroup):
+        """Current 8D command; stale commands are never added to history."""
+
+        commands = ObsTerm(func=mdp.commands_obs, params={"asset_cfg": SceneEntityCfg("robot")})
+        jump_commands = ObsTerm(func=mdp.jump_commands_obs, params={"asset_cfg": SceneEntityCfg("robot")})
+
+        def __post_init__(self) -> None:
+            self.enable_corruption = False
+            self.concatenate_terms = True
+
+    @configclass
+    class ProprioceptionCfg(ObsGroup):
+        """Five noisy policy frames, flattened per term from oldest to newest."""
+
+        base_ang_vel = ObsTerm(
+            func=mdp.base_ang_vel_obs,
+            params={"asset_cfg": SceneEntityCfg("robot")},
+            noise=Unoise(n_min=-0.2, n_max=0.2),
+        )
+        projected_gravity = ObsTerm(
+            func=mdp.projected_gravity_obs,
+            params={"asset_cfg": SceneEntityCfg("robot")},
+            noise=Unoise(n_min=-0.05, n_max=0.05),
+        )
+        leg_joint_pos = ObsTerm(
+            func=mdp.leg_joint_pos_obs,
+            params={
+                "asset_cfg": SceneEntityCfg("robot", joint_names=list(SERIALLEG_POLICY_LEG_JOINTS), preserve_order=True)
+            },
+            noise=Unoise(n_min=-0.01, n_max=0.01),
+        )
+        leg_joint_vel = ObsTerm(
+            func=mdp.leg_joint_vel_obs,
+            params={
+                "asset_cfg": SceneEntityCfg("robot", joint_names=list(SERIALLEG_POLICY_LEG_JOINTS), preserve_order=True)
+            },
+            noise=Unoise(n_min=-1.5, n_max=1.5),
+        )
+        wheel_pos_zero = ObsTerm(
+            func=mdp.wheel_pos_obs,
+            params={
+                "asset_cfg": SceneEntityCfg("robot", joint_names=list(SERIALLEG_WHEEL_JOINTS), preserve_order=True)
+            },
+        )
+        wheel_vel = ObsTerm(
+            func=mdp.wheel_vel_obs,
+            params={
+                "asset_cfg": SceneEntityCfg("robot", joint_names=list(SERIALLEG_WHEEL_JOINTS), preserve_order=True)
+            },
+        )
+        last_actions = ObsTerm(func=mdp.last_actions_obs)
+
+        def __post_init__(self) -> None:
+            self.enable_corruption = True
+            self.concatenate_terms = True
+            self.history_length = mdp.RECOVERY_OBSERVATION_HISTORY_LENGTH
+            self.flatten_history_dim = True
+
+    @configclass
+    class PrivilegedCfg(ProprioceptionCfg):
+        """Five clean proprioceptive frames plus five frames of privileged state."""
+
+        base_lin_vel = ObsTerm(func=mdp.base_lin_vel_obs, params={"asset_cfg": SceneEntityCfg("robot")})
+        wheel_contact_forces = ObsTerm(
+            func=mdp.wheel_contact_force_obs,
+            params={
+                "sensor_cfg": SceneEntityCfg(
+                    "contact_forces",
+                    body_names=["l_wheel_Link", "r_wheel_Link"],
+                    preserve_order=True,
+                )
+            },
+        )
+        base_height = ObsTerm(func=mdp.flat_base_height_obs, params={"asset_cfg": SceneEntityCfg("robot")})
+
+        def __post_init__(self) -> None:
+            super().__post_init__()
+            self.enable_corruption = False
+
+    command: CommandCfg = CommandCfg()
+    proprio: ProprioceptionCfg = ProprioceptionCfg()
+    privileged: PrivilegedCfg = PrivilegedCfg()
 
 
 @configclass
@@ -86,7 +173,9 @@ class RecoveryRewardsCfg:
         params={"command_name": "velocity_height", "asset_cfg": _LEGS},
     )
     leg_action_rate = RewTerm(func=mdp.recovery_leg_action_rate, weight=-0.001)
-    wheel_action_rate = RewTerm(func=mdp.recovery_wheel_action_rate, weight=-0.001)
+    # Stronger ungated sweep candidates are selected through Hydra overrides:
+    # env.rewards.wheel_action_rate.weight=-0.05 or -0.1.
+    wheel_action_rate = RewTerm(func=mdp.recovery_wheel_action_rate, weight=-0.02)
     action_smoothness = RewTerm(
         func=mdp.recovery_action_smoothness,
         weight=-0.03,
@@ -157,8 +246,9 @@ class RecoveryTerminationsCfg:
 
 @configclass
 class RecoveryEnvCfg(Se3RlLabEnvCfg):
-    """Recovery task with the flat policy interface kept byte-for-byte compatible."""
+    """Recovery task with a history-stacked MLP policy interface."""
 
+    observations: RecoveryObservationsCfg = RecoveryObservationsCfg()
     rewards: RecoveryRewardsCfg = RecoveryRewardsCfg()
     terminations: RecoveryTerminationsCfg = RecoveryTerminationsCfg()
 
@@ -184,6 +274,7 @@ class RecoveryEnvCfg(Se3RlLabEnvCfg):
 
 __all__ = [
     "RecoveryEnvCfg",
+    "RecoveryObservationsCfg",
     "RecoveryRewardsCfg",
     "RecoveryTerminationsCfg",
 ]

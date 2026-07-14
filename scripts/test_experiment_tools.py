@@ -7,12 +7,16 @@ from pathlib import Path
 
 import pytest
 from se3_rl_lab.isaac_eval.camera import translated_follow_view, widened_focal_length
-from se3_rl_lab.isaac_eval.schedule import configure_fixed_command_eval, set_command_and_refresh_observations
+from se3_rl_lab.isaac_eval.schedule import (
+    configure_fixed_command_eval,
+    disable_policy_observation_corruption,
+    set_command_and_refresh_observations,
+)
 from se3_rl_lab.tools.reports import compare_metrics, evaluation_score, write_evaluation_report
 from se3_rl_lab.tools.rerun_export import export_rerun
 from se3_rl_lab.tools.runs import RunDirectory, checkpoint_iteration
 
-WORKER_PATH = Path(__file__).parents[1] / "source/se3_rl_lab/se3_rl_lab/isaac_eval/worker.py"
+ROOT = Path(__file__).parents[1]
 
 
 def _metrics(name: str, survival: float, velocity_rmse: float) -> dict:
@@ -103,8 +107,60 @@ def test_eval_camera_horizontal_fov_is_30_percent_wider() -> None:
 
 
 def test_eval_worker_disables_training_observation_corruption() -> None:
-    source = WORKER_PATH.read_text(encoding="utf-8")
-    assert "env_cfg.observations.actor.enable_corruption = False" in source
+    class GroupCfg:
+        enable_corruption = True
+
+    class FlatObservationsCfg:
+        actor = GroupCfg()
+        critic = GroupCfg()
+
+    class FlatEnvCfg:
+        observations = FlatObservationsCfg()
+
+    flat_agent_cfg = type(
+        "FlatAgentCfg",
+        (),
+        {"obs_groups": {"actor": ["actor"], "critic": ["critic"]}},
+    )()
+    assert disable_policy_observation_corruption(FlatEnvCfg(), flat_agent_cfg) == ("actor",)
+    assert not FlatEnvCfg.observations.actor.enable_corruption
+    assert FlatEnvCfg.observations.critic.enable_corruption
+
+    class ObservationsCfg:
+        command = GroupCfg()
+        proprio = GroupCfg()
+        privileged = GroupCfg()
+
+    class EnvCfg:
+        observations = ObservationsCfg()
+
+    agent_cfg = type(
+        "AgentCfg",
+        (),
+        {"obs_groups": {"actor": ["command", "proprio"], "critic": ["command", "privileged"]}},
+    )()
+    disabled = disable_policy_observation_corruption(EnvCfg(), agent_cfg)
+
+    assert disabled == ("command", "proprio")
+    assert not EnvCfg.observations.command.enable_corruption
+    assert not EnvCfg.observations.proprio.enable_corruption
+    assert EnvCfg.observations.privileged.enable_corruption
+
+
+def test_run_manifest_uses_task_specific_observation_dimensions(tmp_path: Path) -> None:
+    flat = RunDirectory(tmp_path / "flat").ensure_manifest(
+        repo_root=ROOT,
+        task="SerialLeg-Flat-v0",
+        command=["train"],
+    )
+    recovery = RunDirectory(tmp_path / "recovery").ensure_manifest(
+        repo_root=ROOT,
+        task="SerialLeg-Recovery-v0",
+        command=["train"],
+    )
+
+    assert (flat["actor_observation_dim"], flat["critic_observation_dim"]) == (34, 40)
+    assert (recovery["actor_observation_dim"], recovery["critic_observation_dim"]) == (138, 168)
 
 
 def test_fixed_command_eval_outlives_the_full_scenario_suite() -> None:

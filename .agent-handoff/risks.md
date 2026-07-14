@@ -1,14 +1,68 @@
 # Risks, Blockers, And Unknowns
 
+## 2026-07-14 WebSim submodule 风险
+
+- `am345/websim_se3` 已从零创建为 private、`isFork=false`；当前只有初始化提交，功能改动尚未 commit/push，因此父仓库 gitlink 仍指向 bootstrap 前基线。
+- 用户要求 submodule 文件不得出现参考仓库字样；每轮 closeout 必须运行全仓禁用词搜索，包含文档、源码、lockfile 和生成配置。
+- 当前 `artifacts/recovery_checkpoints/history5_wscale10_std1_fresh_5k/exported/policy.onnx` 已补 `se3_rl_lab.websim.deployment.v1` 与最新视觉资产 fingerprint，可建立正式 session；其他旧 artifact 仍可能缺 metadata，不能假设全部兼容。
+- height default/motor envelope/history/delay 已有跨端 golden，fallen/finite/residual 已有 0.5 s HTTP canary；但 control noise/encoder bias、较长 recovery 和图形浏览器交互仍未验收，暂不能称为生产 sim2sim 对齐。
+- 对齐 body-frame/periodic-PD/implicitfast/floor-clearance 后，fallen 0.5 s rollout 的 soft closure residual 峰值为 `5.381 mm`，当前 canary 门槛为 `<6 mm`。若要收紧必须调整 equality/constraint 合同并同时验证行为稳定性，不能只改断言。
+- 动态分包后初始 JS 已降至约 149.6 kB，但 MuJoCo/renderer chunks 仍约 523.1/513.2 kB，WASM 仍约 10.1/26.8 MB，视觉 asset manifest 另为 15.3 MB。Node 首次 visual canary 约 32.7 s，热缓存约 6.8 s；真实浏览器首次加载与帧率仍等待用户目视验收。
+- 主仓库已有大量未提交 Recovery 改动与 `artifacts/`；本轮不得回滚、归因或一并提交。新增 `.gitmodules`/gitlink 与 WebSim 适配必须保持可单独审阅。
+- 当前 scale45 页面使用独立 artifact run-root 和手工校正后的 deployment metadata，不修改源码默认 scale10；服务重启后必须继续显式传入 `artifacts/websim_runs`，否则模型发现会回到其他 run-root。该 artifact 对应旧 `model_4000.pt` 原生合同，不应用来给当前 `model_4500.pt` 强行套 scale45。
+- 已证实的 free-joint angular velocity、continuous front-joint PD 和 integrator 三项 gap 均已修复，fallen reset 也加入 floor-aware clearance。剩余差异主要是训练 recovery 的 joint/root 随机分布、control noise/encoder bias 和长时 telemetry；修复后的网页仍不能单独替代 Isaac 策略质量验收。
+- 两份闭链模型的核心 dynamics/contact/equality/tendon 数组已证明一致，因此“浏览器用了错误质量/惯量/摩擦资产”风险已降级；但 fallen reset 的 floor clearance、joint randomization 与 closure velocity 仍不等价，恢复场景的初态分布 gap 继续存在。
+
+## 2026-07-14 wheel-scale-10/std-1 run 未完成风险
+
+- run `2026-07-13_19-43-59_recovery_history5_wscale10_std1_fresh_5k` 的进程已退出，日志最后为 iteration 4760/5000，未生成 `model_4999.pt`；日志没有 Traceback/OOM/NaN，精确退出原因为 `UNKNOWN`。不得将 `model_4500.pt` 表述为完整 5k final checkpoint。
+- `model_4500.pt` 已完成远端/本地 SHA 一致性与 72 tensors finite audit，可作为最后可用评估候选；但若 resume，optimizer、curriculum 和总 transition 连续性必须单独核对，不能默认等价于不间断 fresh 5k。
+- model4500 已在服务器 RTX 4090 完成正式媒体录制：Isaac 中也明显侧倒/失稳，不能把 WebSim 抖动归为纯 sim2sim。当前 eval 只有 base velocity/yaw/height/loop telemetry，尚缺 pitch-rate、raw action、wheel target/velocity/torque saturation，4–5 Hz 根因定量仍需专用 probe。
+- 同合同媒体 A/B 中，旧 `model_4000/scale45` 的 vx/yaw RMSE `0.25281/0.26064` 优于当前 `model_4500/scale10` 的 `0.28795/0.52612`，视觉也更稳；但两者来自不同 fresh run，训练 wheel scale 与 init std 同时变化。该结果只能证明当前策略在 Isaac 中已退化，不能把退化单独归因于 scale 10、std 1 或 WebSim runtime。
+
+## 2026-07-13 wheel scale 10 / Recovery std 1 fresh 重训风险
+
+- 用户要求 wheel action scale `45→10`，但 raw `wheel_action_rate` 与 `action_smoothness` 权重保持不变。对相同物理 wheel-target 变化，策略需要约 `4.5×` raw action 变化，二次 raw-action penalty 约放大到 `20.25×`；这可能降低高速 tracking 或改变最优平滑度，最终效果为 `UNKNOWN`，必须用相同命令 telemetry/MP4 验收。
+- 当前没有有意义的 action clip（runner `clip_actions=null`，action cfg 上限 100），所以 scale 10 不会把 40 rad/s 变成不可达；策略可输出 raw mean 约 4。反面风险是 actor mean 仍可能离开常用 raw 范围，需继续监控历史 476/3195 污染窗口。
+- Recovery `init_std=1.0` 相对旧正式 run 的 0.5 将腿 raw exploration 加倍；wheel 初始物理 target std 则因 scale 同时下降，约为 10 rad/s（旧合同约 22.5 rad/s）。4096-env gate 和新 run 初期 catastrophic 0，只证明启动健康，不证明长程数值稳定或最终 tracking。
+- YAML action contract 变化要求重建 USD metadata；本轮已在 RTX 4090 重建并通过完整 `--check`，本机/远端 USD SHA 一致。后续再改 YAML 时仍必须重复该流程。
+
+## 2026-07-13 Recovery 五帧历史实现后的剩余风险
+
+- 目标 RTX 4090 的 4096-env capacity gate 已通过：98,304 steps、29,441 steps/s、峰值显存 4,818 MiB、catastrophic 0，无 OOM；正式 run 稳态约占 5.0 GiB。容量风险已降级，但并行启动其他大 GPU 任务仍可能争抢资源。
+- 所有 34D/40D Recovery checkpoint 与新输入层结构不兼容，只能 fresh train；不得用 `strict=False`、补零或旧 optimizer state 伪装 resume。Flat task 仍为 34D/40D，不受此限制。
+- 五帧历史是否能完全消除 4–5 Hz 极限环仍为 `UNKNOWN`；model1000 的 tracking RMSE 改善，用户目视确认相比 model500 抖动已改善，但 pitch-rate/action/wheel saturation 幅值尚未专用量化，不能提前宣称极限环已完全消失。
+- 用户已目视判定 `model_500.pt` “还是抖得不行”，并确认 `model_1000.pt` 的抖动已改善，但 tracking 仍较差。model1000 的聚合 vx/yaw RMSE 虽下降，稳态 yaw-left/right/forward-turn 仍过冲约 `33%/56%/31%`，不能将“相对改善”写成“tracking 合格”。stand base-height 整段 RMS/p2p 也混入了姿态漂移/大幅运动，不应被当作否定视觉 jitter 改善的指标。后续必须同时验收 pitch-rate/接触/action/wheel saturation、recovery success 与分场景 steady-state tracking。
+- runtime smoke 已锁 term-major、oldest→newest 与 reset 首帧复制；未来 JIT/ONNX、sim2sim/真机部署尚未做端到端验证，必须复用相同布局与填充合同。
+- 本机 IsaacSim 仍打印既有 inotify `errno=28` change-watch 噪声，但 runtime smoke 与 PPO update 均成功；训练机含 `rerun-sdk`，同步后完整聚焦回归为 `26 passed`。
+
 ## 2026-07-12 recovery height-default fresh 5k 结果与抖动风险
 
+- 用户已把 reward 数值从主嫌疑降级；现有证据支持这一调整：`-0.02/-0.05` 视频的站立视觉主峰均为 `4.027 Hz`，原始 wheel action-rate 只约降 9%，没有换模态。继续只加大该权重很可能继续牺牲恢复动作而不消除闭环振荡。
+- “旧 se3_rl 同奖励不抖”只对 normalized GRU/64-step/full-budget 合同成立，旧仓库 MLP 仍是未训练占位；但旧 GRU 现已在当前 PhysX 单环境平滑站立，所以它不仅是 MuJoCo 视频证据。当前 unnormalized MLP/24-step 与参考在 memory、normalization、rollout/PPO 和 `5.33×` total-transition 预算上同时变化，不能把全部差异只归给 GRU 架构。
+- 当前 actor 与参考一样不直接观察 base linear velocity、wheel contact 或 base height。同一 reference GRU 保留 hidden state 时 pitch-rate RMS `0.000804 rad/s`，每拍清空 hidden state 后出现 `4.8 Hz`、RMS `0.205 rad/s`；这直接证明历史状态在当前 plant 上抑制该模态。当前 MLP 的对应 RMS 为 `1.546 rad/s`，说明 normalization/训练预算等还会放大幅值。
+- PhysX external spherical loop/fixed tendon/contact 不再是主因：reference GRU 在当前 PhysX 平滑，而当前 MLP 在相同 plant 上复现 `4.5 Hz`。backend 差异不能被宣称完全为零，但在 temporal policy 重新训练失败前不应优先调 friction/solver/constraint。
+- 三档 fresh sweep 因用户释放服务器而停止；`-0.02/-0.05` 完整，`-0.1` 仅到 iteration 667 且只有 model500。监督器最终 `halted`/return code `-9` 来自本 Agent 有意 SIGKILL 进程组，不是训练异常；不得把 partial run 当作完整 5k 或据此选择最优权重。
+- baseline、两档完整 run 与 `-0.1` partial 的全部现有 checkpoint、params、events、git diff 和关键日志已保存到本地 `artifacts/recovery_checkpoints/wheel_action_rate_sweep/`；manifest 57/57 SHA256 通过。远端 supervisor/train 与 GPU compute process 均为 0，实例可释放。
+- 第一档 `-0.02` 已健康完成 5000 iterations，排除本档数值稳定性风险；但训练 reward/std 不能证明抖动改善，仍必须与 `-0.05/-0.1` 用相同 jitter/recovery probe 比较。
+- 第二档 `-0.05` 已健康完成 5000 iterations 与最终 checkpoint finite audit；1780/1910/2405/3310 附近的 `catastrophic=0.0002` 孤点均自行回零，未扩散。第三档 `-0.1` 后续须从 seed 42 fresh 重跑并跨全部 cache stages、历史 3193–3204 窗口与最终 4999；resume `m010_partial/model_500.pt` 只适合技术诊断，不能恢复不间断单变量实验合同。
+- `se3rl eval` 由当前源码构造环境，因此两段 Reward Manager 都显示默认 wheel rate `-0.02`；reward 不参与确定性 policy 动作或物理，画面仍分别来自各自 checkpoint。不要把 eval reward 数值用于两档比较；使用 telemetry/jitter probe 比较行为。
 - model2000 旧 noisy MP4 不应直接解读为无噪部署行为；eval worker 已修复并重录无噪版本。但无噪确定性 actor 的稳态 4–5 Hz 极限环仍存在，关闭 eval noise 不能视作视觉或控制抖动已解决。
+- nominal-vs-randomized A/B 已排除 startup material/base mass/COM/actuator-gain randomization 为主因：nominal model4999 仍复现 `4.67 Hz`、pitch-rate std `1.56 rad/s`。eval worker 保留 randomization 仍影响单次指标，但不再是根因未知项。
+- 平均动作 hold 与分通道 A/B 已确认轮速度 policy 是主自激通道：恒定动作下振荡先快速衰减再因无反馈倾倒；固定腿目标后 wheel/root-z/pitch 仍同频 `3.67 Hz`，固定轮动作后初始抖动显著下降但失去平衡。腿动作会耦合放大 z/contact，不应误写为唯一根因。
+- model4999 在站立时频繁请求超出轮电机 no-load speed 的 target，并使轮 torque 近半时间贴近上限；任何修复若只增强 action smoothness 而不约束物理 target/饱和使用，可能继续学出低频但饱和的动态平衡。
+- 当前按用户要求只加强无门控 wheel action-rate；它可能降低 4–5 Hz 抖动，也可能在倒地恢复阶段抑制必要的快速轮动作。三档仅通过 1-update gate，必须用 fresh 长训练同时验收 recovery success 与稳态 jitter，不能从初始 reward 大小推断最优权重。
+- 当前 feed-forward actor 不观测 base linear velocity、wheel contact force 或 base height，且 actor observation normalization 关闭；reference normalized GRU 与 hidden-reset 消融已在同一 IsaacLab plant 完成。temporal memory 是已确认关键变量，但 normalization、64-step rollout、reference PPO 与训练预算的独立贡献仍为 `UNKNOWN`。
+- 用户已选择先试 Kyber-style 5-frame MLP history，但 5 帧并不等价于 GRU：50 Hz 下只有 80 ms 时间戳跨度，能覆盖 4.5 Hz 模态约 130° 相位，但是否足以在 recovery、移动和更长时延下稳定控制仍为 `UNKNOWN`。首次训练应保持其他合同不变，失败后再增大 history 或回到 GRU，不能预先宣称已解决。
+- 参考语义不是简单给当前 `ActorCfg/CriticCfg` 各设 `history_length=5`：Kyber 把 command 保持单帧，只堆叠 proprioception/privileged terms。当前已按该语义拆为 actor 138D、critic 168D；若未来直接堆完整 34D/40D，会退化为 170D/200D 并向网络重复过期 command。
+- IsaacLab history 是逐 term、oldest→newest、term-major flatten；reset 后第一次 append 会把当前观测复制到全部 5 个槽。训练、eval/play、JIT/ONNX metadata 和未来 sim2sim 若有任何顺序、首帧填充或 command 分组差异，checkpoint 会在形状正确时仍发生静默语义错配，必须用数值布局测试锁定。
+- 新 observation groups 在 4096 env×24-step 下相对现有 actor/critic tensor 至少增加约 84 MiB raw rollout observation storage，首层另增加 118,784 个网络参数；实际峰值还含 mini-batch/optimizer/PhysX。并行负载下已有 CUDA OOM 风险，4096-env gate 必须重新测峰值显存。
+- 138D/168D 输入与所有现有 34D/40D checkpoint 结构不兼容；只能 fresh train。不得用 `strict=False` 或手工补零把旧 checkpoint 伪装为有效 resume。
 
 - 新 run `recovery_height_default_fresh_5k` 已健康完成 5000 iterations，最终 model4999 catastrophic 0；这证明本轮没有复发 3195 级联污染，但不代表控制质量平滑。model4999 forward action/target delta RMS 比 model2000 更高，真实抖动仍未解决。
 - production eval camera 当前跟随 root x/y/z；root-z 的毫米级 4–5 Hz 振荡会带动整个背景，显著放大观感。只锁 camera z 的诊断将背景垂直逐帧位移约降 81%，但它只修录像，不修真实控制。
 - 稳态 A/B 只观测到左右轮接地；no-delay、Kd=6、zero-restitution 均未消除 root-z/pitch 极限环。不要再把复杂 collision mesh 误触地、随机 delay 或 restitution 表述为已确认根因。
-- 训练产物与 log 仍按 snapshot 路径追踪，重要 checkpoint 受 GPUFree 数据盘持久性风险影响；释放实例前应备份 `model_4999.pt`。
-- 23:15 后 SSH alias `se3_rl_lab_gpufree` 突然无输出、exit 1；训练完成状态和 checkpoint SHA 已在断连前确认。仅远端 `/tmp` 诊断 scratch 清理未验证，生产 run 不受影响。
+- 本轮重要训练产物已在释放实例前完成独立本地备份和 SHA 校验；后续新长训练仍应沿用同样的退出前备份流程。
 
 - 旧 `recovery_motor_tn_fresh_5k` 已停止，不再作为有效训练结果；它证明原 `init_std=1.0/entropy=0.01/lr=1e-3/KL=0.01` 组合会伴随 std 增长和 reward 爆点。
 - `recovery_ref_std_fresh_5k` 已失败：iteration 3195 起物理极端状态产生巨额有限 reward，3204 后 catastrophic 快速扩散，最终 iteration 3606 后退出。std 在首爆时仅 0.36，不能把首因归为 std。
@@ -65,7 +119,7 @@
 - IsaacSim 启动时大量 `Failed to create change watch ... errno=28/No space left on device`，当前 `/proc/sys/fs/inotify/max_user_watches=65536`、`max_user_instances=128`，疑似 inotify watch 不足；目前未阻止 task 注册或 CPU/headless 环境创建。
 - `OMNI_KIT_ACCEPT_EULA=YES uv run python -u scripts/zero_agent.py --task Template-Se3-Rl-Lab-v0 --num_envs 1 --headless` 在 CUDA 路径报 `omni.physx.tensors` CUDA OOM，随后 `Failed to get DOF velocities from backend`。
 - 完整dataset/passive reset已通过4096-env cache gate和100-iteration PPO soak，旧NaN窗口未复现；但正式2k尚未跨过iteration 1500后的长期cache混合阶段。训练完成前仍需监控更高joint randomization/cache比例下的闭链接触稳定性。
-- 新 policy 明确为无 history 的 feed-forward MLP，旧 GRU checkpoint 与当前模型结构不兼容，不能直接 resume；若需要复用旧策略，只能另做权重迁移/蒸馏或重新训练，当前基础路径按重新训练处理。
+- Recovery policy 现为五帧 history 的 feed-forward MLP；旧 34D MLP/GRU checkpoint 均与 138D actor 输入不兼容，不能直接 resume。Flat policy 仍是无 history 的 34D MLP。
 - `velocity_height` 现为强制 8D term，缺失或 shape 错误会硬失败；当前 pitch/roll 与末 3D jump slots 恒为零。内部 `base_velocity=[vx,0,yaw]` 只是官方 reward 适配视图，不得暴露给 policy 或替换 legacy 8D checkpoint 合同。
 - 启用官方 `bad_orientation`/`base_contact` termination 后，1-env CPU 64+64 零/小动作旧 smoke 会在长零动作阶段按设计终止；默认 gate 已收敛为 8+8，只验证 wiring 与短时物理稳定性。长时稳定性必须用训练策略控制的 rollout 验收，不能把短 gate 解释为长训练通过。
 - legacy command observation scale `(2.0, 0.25, 5.0, 5.0, 5.0)` 与当前最终课程范围不完全匹配：`vx=±2.4 m/s` 会成为 actor `±4.8`，height 也未中心化。用户决定低优先级推迟到 finetune；在此之前为兼容旧 policy 接口保持不变，不应在单一训练路径中私自修改。

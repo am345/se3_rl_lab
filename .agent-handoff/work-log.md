@@ -1,5 +1,243 @@
 # Current Work Log
 
+## 2026-07-14 WebSim sim2sim runtime 修复
+
+- `websim_se3/frontend/src/runtime/observation.ts` 将 MuJoCo free-joint `qvel[3:6]` 直接作为 body angular velocity缩放，只对世界重力做 quaternion inverse rotation；非单位姿态测试锁定该 frame 语义。
+- `control.ts` 仅对连续 LF0/RF0 使用 shortest-angle PD error；共享 JSON fixture 同时由 native Python 与 browser Vitest 验证跨 ±π 和多圈输入。
+- `scripts/build_websim_scene.py` 与生成 `scene.xml` 显式锁 `implicitfast`、Newton、100 iterations。fallen reset 依据 compiled mesh/primitive collision geom 最低点整体上抬到 10 mm，HTTP canary 直接断言 clearance。
+- scale10 与 scale45 ONNX metadata 已刷新到新 asset fingerprint `2e07880b...d5dbb`；scale45 保持 wheel scale 45，SHA256 更新为 `011b41f2...e2ce6`。真实 HTTP 25 cycles/0.5 s 全 finite，最大 closure residual `5.381 mm < 6 mm`；服务仍位于 `http://127.0.0.1:2705/websim/`。
+
+## 2026-07-14 对照 se3_rl 正常 sim2sim
+
+- 只读检查 sibling `/home/am345/se3_rl` 的 `se3_sim2sim`、`se3_shared`、Recovery 配置与默认 closed-chain MJCF。该项目训练使用 MJLab/MuJoCo-Warp，sim2sim 使用 native MuJoCo，并由 `se3_shared` 直接共享 action/observation/motor/timing；Recovery wheel scale 固定 45。
+- 默认正常 sim2sim 使用 `serialleg_closed_chain_v3_train_obb_trim.xml`。与当前 browser `scene.xml` 用 native MuJoCo 编译后比较：两边 `17/16` q/v、12 bodies、80 geoms、2 equality、4 tendons；body mass/inertia/ipos/iquat、joint pos/axis、dof armature/damping、geom friction/solref/solimp、equality solref/solimp 和 tendon range 全部 max diff 0。浏览器另有 6 个 direct-torque actuators和减面 visual，但 collision/dynamics 数组一致。
+- 明确 observation bug：MuJoCo free-joint `qvel[3:6]` 是 body-frame angular velocity，正常 sim2sim 直接作为 `base_ang_vel_body`；当前 WebSim `proprioception()` 又按 root quaternion 执行 `rotateInverse`，大姿态/fallen 时会把角速度轴和值错误旋转，且错误进入五帧 history。
+- 明确控制 bug：正常 sim2sim 对连续 LF0/RF0 使用 `policy_leg_position_error_np()` shortest-angle periodic error；WebSim `MixedController.torques()` 直接做 `target-position`。front joint 跨 ±π 或多圈时，浏览器可能沿错误长路径输出饱和腿力矩。
+- 明确 solver 差异：正常 sim2sim 构建后强制 timestep 0.005、integrator `implicitfast`、Newton、100 iterations；browser generator 只改 timestep，scene 实际仍为 Euler/ Newton/100。质量与接触数组一致时，该 integrator 差异应优先 A/B，不应先调摩擦。
+- reset 仍不等价：WebSim fallen 只旋转 root、固定 z=0.36、保留 standing joints；正常 sim2sim/训练有闭链 position/velocity closure、最低碰撞点 floor lift，以及 recovery joint/root 随机化。当前 0.5 s finite/residual canary 不能证明 reset 分布或闭环轨迹对齐。
+- 结论更新：model4500/scale10 在 Isaac 中已差，训练问题成立；但 model4000/scale45 browser 明显差不能再主要归咎策略，当前 runtime 至少有上述三项可证实的 sim2sim 实现缺口。本轮未修改任何源码或运行服务。
+
+## 2026-07-14 WebSim MuJoCo 风格棋盘地面
+
+- 用户反馈纯色深蓝地面观感不适。renderer 现用 2×2 RGBA `DataTexture` 生成浅灰双色棋盘，repeat 200 次铺满 200×200 m 平面，对应约 0.5 m 方格；近处使用 nearest 放大，远处使用 mipmap 线性融合。
+- scene background 改为浅蓝灰，半球光 ground color 与 directional light 强度同步收敛；未修改 MuJoCo scene 中的碰撞、摩擦、接触或任何策略合同。新增 floor texture/geometry/material dispose，避免运行/暂停反复创建 renderer 时泄漏 GPU 资源。
+- 完整 Vitest `6 passed`、typecheck 和 Vite production build 通过，仅保留既有 >500 kB chunk warning。服务页面确认引用新 `index-DIpEXaKJ.js`，并通过 `http://127.0.0.1:2705/websim/?camera=wide-follow-v1&floor=mujoco-checker-v1` 重新打开。
+
+## 2026-07-14 WebSim 广角水平跟随相机
+
+- 用户反馈原页面 FOV 太小且机器人容易跑出屏幕。源码确认 renderer 使用固定 `42°` PerspectiveCamera，eye/target 从不读取机器人 root；这是移动出屏的直接原因。
+- 新增纯函数 camera contract：vertical FOV `62°`，目标点读取 MuJoCo root x/y 并转换到 three.js x/z，target y 固定 `0.24 m`；每帧以 `alpha=0.2` 平滑水平跟随，距离超过 2 m 的 reset/teleport 直接 snap。camera eye 保持固定世界方向和高度偏移，不随 root yaw/z 改变，避免背景旋转或竖直抖动。
+- renderer 地面从 20×20 m 扩为 200×200 m。新增两项 camera tests，完整 Vitest 为 `6 passed`、HTTP canary 1 skipped；`npm run typecheck` 和 Vite production build 通过，initial JS 仍 149.61 kB，renderer chunk 513.72 kB，仅保留既有 >500 kB warning。
+- scale45 服务无需重启即可读取新 dist；页面 GET 已确认引用新 `index-DkytZVb8.js`，并通过 `http://127.0.0.1:2705/websim/?camera=wide-follow-v1` 重新发送打开请求。本轮未改策略、物理或 deployment metadata。
+
+## 2026-07-14 WebSim model4000 / wheel scale45 运行
+
+- 用户要求直接查看 wheel action scale 45 的浏览器仿真。服务器当前无 GPU，但纯 actor 导出不依赖 Isaac/GPU；已从旧 run 拉回 `model_4000.pt`，SHA256 `8bc4c47067fd4da7076c2d3dd15188efda32a01b15bcb2768e1e5bb4ba938c45`，放入独立 run-root `artifacts/websim_runs/serialleg_flat_closed_chain/2026-07-13_17-24-18_recovery_history5_scale45/`。
+- checkpoint actor 为无 normalization 的 ELU MLP `138→512→256→128→6`。导出 `exported/policy.onnx` 后附加 `se3_rl_lab.websim.deployment.v1`，仅将 wheel action group scale 从当前源码默认 10 改为该 checkpoint 的原生合同 45；ONNX 为 949,022 bytes，SHA256 `0ca6a471b4c014dbe1d308b058fc394faa21a4ccd826906ced315d18489b8dc8`。8×138 随机输入的 ONNX ReferenceEvaluator 与 PyTorch max abs error `1.1920929e-6`，输出全 finite。
+- 旧 scale10 WebSim 服务 PID `85111` 已停止；scale45 专用服务运行于 PTY session `27940`，URL `http://127.0.0.1:2705/websim/`。models API 只返回该 scale45 run，session descriptor 明确为 `SerialLeg-Recovery-v0`、wheel scale `45.0`，HTTP 下载 ONNX SHA 与本地一致。
+- 前端真实 HTTP BrowserSimulation canary 对该 session 执行 fallen reset + 25 policy cycles/0.5 s，Vitest `1 passed`；页面 GET 成功并已通过 `xdg-open` 发送浏览器打开请求。本轮未修改策略、仿真或 WebSim 源码，未 commit/push。
+
+## 2026-07-14 model4000 scale45 / model4500 scale10 同合同 Isaac A/B
+
+- 为复核“之前有段时间不抖”，在服务器 RTX 4090 对旧 run `model_4000.pt` 执行与当前 `model_4500.pt` 相同的 seed-47、6 scenarios × 2 s Recovery eval。旧 checkpoint 必须匹配其训练时 wheel action scale `45.0`；为避免修改仓库源码，仅在远端 `/tmp/model4000_scale45_eval_worker.py` 与独立 context 中注入 scale override，运行日志明确打印 `[eval-contract] wheel_action_scale=45.0`，actor/critic 为 138D/168D。
+- 旧 MP4 已拉回 `artifacts/recovery_eval/model_4000-server-scale45/model_4000-scale45-isaac-eval.mp4`：H.264 1280×720@50 FPS、599 frames、11.98 s、1,377,231 bytes，SHA256 `11861dff76fcb6a0e5d128201dc3f244694e34dee8608322397cc134cbc4b8b3`。600 steps、0 termination/non-finite、survival 1.0、vx/yaw RMSE `0.2528121/0.2606376`、max loop residual `0.0009936 m`。
+- 已生成并打开标注同屏视频 `artifacts/recovery_eval/model4000-scale45-vs-model4500-scale10-side-by-side.mp4`：H.264 1280×360@50 FPS、599 frames、11.98 s、1,850,776 bytes，SHA256 `dedb56ada079b64ece6a5d2c35de2593fd5ef6003cef4669b2747a6c5e9fd2aa`。左侧旧 model4000/scale45，右侧当前 model4500/scale10；抽帧与指标均显示当前策略姿态波动更明显，尤其 yaw RMSE 约为旧策略 `2.02×`。
+- 结论边界：Isaac 中已复现当前策略更抖，因此不能归因于纯 WebSim sim2sim。该 A/B 同时改变 checkpoint lineage、训练 wheel action scale 与训练 init std（确定性 inference 不直接采样 std，但训练结果受其影响），所以不能单独断言 scale 10 是根因；下一步若要做因果定位，应补 pitch-rate/raw action/wheel target/velocity/torque saturation probe，或做同一训练合同的 checkpoint 时间序列比较。
+
+## 2026-07-14 Isaac Play MP4 请求
+
+- 用户恢复训练服务器后，在空闲 RTX 4090 上用远端 `model_4500.pt` 重录。首次 `se3rl eval` 因旧 run manifest 把任务错误解析为 Flat 34D，checkpoint 138D load mismatch；随后将 eval context 明确设为 `SerialLeg-Recovery-v0` 并直接调用 worker，正确解析 actor/critic `138D/168D` 后成功完成 6×2 s 固定场景。
+- 远端生成 `model_4500-step-0.mp4`、metrics 和 telemetry，已拉回 `artifacts/recovery_eval/model_4500-server/`。MP4 为 H.264 1280×720@50 FPS、599 frames、11.98 s、1,511,057 bytes，SHA256 `4b43e3b0edc0c86554996ac27107013dc4c0572c650f0592b3f99ff3b6ff4384`；接触图抽帧确认机器人持续可见，但多场景明显侧倒/失稳，已通过 `xdg-open` 打开。
+- model4500 summary：600 steps、0 termination/non-finite、survival 1.0、vx/yaw RMSE `0.2879477/0.5261201`、max loop residual `0.0007378 m`。termination-based survival 仍不能解释为稳定站立；Isaac 本身已复现明显不稳，因此 WebSim 抖动不能归为纯 sim2sim。
+- 用户停止其他 Isaac Play 后，本机 RTX 5060 显存恢复至约 174 MiB 使用；尝试以 `model_4500.pt` 录制 500-step Play，进程 exit 0，但默认 headless 相机只录到地面，该 MP4 已删除。
+- 随后用固定世界朝向跟随相机运行 6×2 秒 Isaac Eval；仿真与渲染运行约 6.5 分钟并正常关闭，但 Isaac 录制封装未留下 MP4/metrics，临时 context/目录已清理，未把失败结果交付用户。
+- 曾临时打开同一系列 `model_1000` 有效视频作为 fallback，但用户指出 checkpoint 不一致；现已由真正的 model4500 服务器录像取代，后续不得再用 model1000 代表当前 WebSim ONNX。
+
+## 2026-07-14 WebSim submodule 启动
+
+- 视觉阶段完成：采用闭链视觉 MJCF 的 23 个 visual geoms，并新增 `scripts/build_websim_visual_meshes.py` 生成浏览器专用 STL。原始视觉约 234.9 万面/117.4 MB，减面后约 29.8 万面；完整 scene manifest 为 78 files/15.3 MB。
+- 原始视觉资产直接进入官方 WASM 时触发 2 GiB 内存上限；减面资产经 MuJoCo 3.10.0 成功编译为 77 meshes/80 geoms、153,934 vertices/305,099 faces，mesh face index 和 standing finite gate 通过。
+- three.js renderer 改为读取 MuJoCo compiled `mesh_vert`/`mesh_face`，只显示 group 1 visual geoms；不再把 mesh 退化为 `geom_rbound` 球体。正式 ONNX 已补当前 asset fingerprint metadata，真实 HTTP fallen 25-cycle rollout 再次通过。
+- Vite 页面已重建并在 `http://127.0.0.1:2705/websim/` 启动，浏览器打开请求已发送；等待用户目视验收。服务会话仍在当前 Agent 终端中运行，功能未 commit/push。
+- 第三阶段完成：新增主仓库 native + submodule Vitest 共享 golden fixture，三档高度默认位姿与 DM/M3508 包络双向对拍；前端另锁 138D term-major oldest→newest history 和 1 physics-step FIFO。
+- Browser runtime 新增可复现 fallen reset、左右 closure-site 最大残差、qpos/qvel/ctrl finite gate；页面提供 Stand/Fall 按钮及 loop residual/finite telemetry，运行中禁用 load/reset 避免异步 inference 生命周期竞争。
+- 真实 HTTP canary 使用临时附加正式 metadata 的 138→6 ONNX，经服务端加载 55 assets 后执行 fallen reset + 25 policy cycles/0.5 s，finite 且 closure residual 保持 `<5 mm`；首次失败记录峰值约 `2.190 mm`，因此 gate 采用 5 mm 而非无证据的 1 mm。
+- `main.tsx` 对 MuJoCo runtime 与 renderer 使用动态 import；Vite 初始 JS `1,190.47→149.61 kB`，另生成约 523.10/512.50 kB 的按需 chunks。功能仍未 commit/push。
+- 第二阶段完成：新增确定性 `scripts/build_websim_scene.py`，从 canonical MJCF 生成 5 ms `scene.xml`、6 路 direct-torque actuator 和只包含 entrypoint + 54 STL 的 `websim_manifest.json`；服务端 session 返回逐文件 URL/size 并执行路径与存在性校验。
+- Submodule 锁定官方 `@mujoco/mujoco@3.10.0`、`onnxruntime-web@1.27.0`、`three@0.185.1`；浏览器已串联 VFS asset load、ONNX policy、term-major 5-frame history、height-conditioned leg targets、1-step FIFO、DM/M3508 torque-speed clipping、decimation stepping、three.js viewport、命令滑杆与 telemetry。
+- 官方 MuJoCo WASM 真加载报告 `nq=17 nv=16 nu=6 ngeom=57 neq=2 ntendon=4`，standing height `0.22`，单步时间 `0.005`；现有 Recovery ONNX 经 ONNX Runtime Web 真推理得到 6 个 finite actions。功能未 commit/push。
+
+- 用户确定采用 submodule，名称固定为 `websim_se3`；随后要求删除最初导入历史的仓库、从零建立独立仓库，且 submodule 文件不得出现参考仓库字样。
+- 目标架构：Python server 负责 run/ONNX 发现、metadata/scene contract 校验与静态资源；浏览器内运行 MuJoCo single-thread WASM、ONNX Runtime Web 和 three.js。runtime 顺序为 observation→ONNX inference→action→decimated `mj_step`→event/telemetry→published render frame。
+- 现有 WebSim 功能包括自动跟随最新 ONNX、standing/random-fall reset、键盘速度命令、电机开关、仿真速度、root follow、visual/collision/contact/contact-force overlay、joint monitor 和拖拽外力。
+- SE3 readiness：已有 canonical closed-chain MJCF、528 KiB meshes 和 924 KiB Recovery ONNX（input `obs[1,138]`、output `actions[1,6]`）；ONNX `metadata_count=0`。主要实施缺口是 deployment schema、浏览器 scene bundle、4+2 mixed control、delay FIFO 与 T-N curve。
+- Git/submodule 状态：`am345/websim_se3` 已重建为 private、`isFork=false`、仅有独立 `Initial commit`，并以根目录 submodule 接入；当前功能位于未提交分支 `codex/bootstrap-websim`。本轮不会提交或推送主仓库现有 Recovery 改动。
+- Submodule bootstrap 已实现独立 Python package/CLI、safe local run discovery、strict metadata parser、session/static service、React/Vite shell、8 项 backend tests 和 frontend build；全仓禁用词搜索保持 0 命中。
+- 主仓库新增 `serialleg_policy_contract.py` 与 `websim/deployment.py`，Recovery `play.py` 在 ONNX 导出后附加项目 schema；Flat 导出保持不变。为避免纯合同读取拉起 Kit，`assets.robots` 改为惰性导入，`mdp/observations.py` 从轻量合同显式 re-export 原有常量。
+- 真实 `policy.onnx` 临时副本完成 metadata round-trip 和 submodule parser cross-contract canary：138D input、6D output、130D proprio、`joint_position/joint_velocity` mixed action、1-step delay、asset fingerprint 均通过；未修改原 artifact。
+
+## 2026-07-14 本机 Isaac Sim play model4500
+
+- 用户要求启动 Isaac Sim play。远端容器仍可 SSH，但 GPU 设备、Xorg :20 和 Selkies :3000 均已被平台释放，无法在远端显示；未尝试在无 `/dev/nvidia*` 的容器强启 Vulkan。
+- 本机 `DISPLAY=:0`、RTX 5060 8 GiB、Isaac Sim 5.1 环境可用，因此用已拉回的 `model_4500.pt` 启动 `SerialLeg-Recovery-v0` 单环境 GUI play，启用 collider visualization。PID/SID `888603`，日志 `/tmp/recovery_wscale10_std1_model4500_local_play.log`。
+- runtime 成功加载 checkpoint，actor/critic 为 138D/168D；X11 窗口 `0x320000b` 标题 `Isaac Sim 5.1.0`、1440×975、Map State `IsViewable`，GPU compute 显存约 4,542 MiB。fatal scan 无 Traceback/OOM/assertion；inotify errno 28 为既有 watch-limit 噪声。
+
+## 2026-07-14 wheel scale 10 / std 1 最后 checkpoint 拉回
+
+- 用户称训练已完成并要求拉回最后 checkpoint；复核远端发现 PID 28576 已退出，但日志只到 iteration 4760/5000，run 中不存在 `model_4999.pt`。fatal scan 无 Traceback/OOM/assertion/NaN，退出原因 `UNKNOWN`；没有擅自 resume 或重开训练。
+- 最后实际落盘 checkpoint 为 `model_4500.pt`，5,868,725 bytes，SHA256 `168bd10af72c603586bcea760c6608c6ad5f731d48ab804be376d995fc2ed8c4`。已拉回 `artifacts/recovery_checkpoints/history5_wscale10_std1_fresh_5k/model_4500.pt`，远端/本地 SHA 一致。
+- 本地 `torch.load` 审计 72 tensors、1,461,681 tensor values，non-finite tensors 为 0。该文件是最后可用 checkpoint，不得称为完整 5k final checkpoint。
+
+## 2026-07-13 wheel scale 10 / std 1 model1000 MP4
+
+- 用户要求用当前最新 checkpoint 录制 MP4；查询时 active run 到 iteration 1031，最新落盘为 `model_1000.pt`。未暂停 4096-env 训练，按既有 fixed seed-47、6 scenarios × 4 秒 standard suite、`--no-rerun` 执行，eval exit 0，actor/critic 输入确认 138D/168D。
+- 远端/本地 MP4 均为 H.264 1280×720@50 FPS、1199 frames、23.98 秒、2,774,720 bytes，SHA256 `067276bd6aaeea009175f4213cc7015c236d6d4a8f2dfb0026c6d242ad889ab9`；本地路径 `artifacts/recovery_eval/wscale10-std1-model1000-recovery-eval.mp4`。
+- Metrics 为 1200 steps、0 termination/non-finite、vx/yaw RMSE `0.16569/0.32235`；eval fatal scan 为空。录制与 scp 后正式训练 PID 28576 继续到 iteration 1133，显存约 5.0 GiB，训练 fatal scan 为空。
+
+## 2026-07-13 wheel scale 10 / Recovery std 1 重建与 fresh 5k 启动
+
+- 用户明确要求只把 wheel `action_scale` 改为 `10.0`、Recovery `init_std` 改为 `1.0`，停止当前训练并 fresh 重开；没有授权联动修改 raw action-rate/smoothness。已将 `robot_config.yaml` 的 wheel scale `45→10`，将 `RecoveryPPORunnerCfg` 的 Gaussian std `0.5→1.0`，同步更新 actuator/recovery/runtime smoke 断言与 README；`diff_drive_max_wheel_speed=45` 保持不变。
+- 旧正式 PID 2577 在 iteration 4154/5000、reward 251.63、std 0.31、catastrophic 0 时收到 SIGTERM，约 1 秒退出；run/log/checkpoint 全保留。最后已落盘 `model_4000.pt` 为 5,868,725 bytes，SHA256 `8bc4c47067fd4da7076c2d3dd15188efda32a01b15bcb2768e1e5bb4ba938c45`，不得误写为异常失败或 resume 候选。
+- YAML SHA 改动后，本机 `convert_serialleg_urdf_to_usd.py --check` 如预期报告旧 USD contract hash mismatch；本机 Isaac Sim 同时打印既有 inotify errno 28 和 8 GiB Vulkan OOM 噪声。改在空闲 RTX 4090 上重建，随后远端 `--check` exit 0；本机/远端生成 USD SHA256 同为 `6567f64953b2a7130a4223cf3bb5a0f06d8f552a868de245dc1f109918fa56ec`。
+- 本机新合同聚焦 pytest `18 passed`，远端含 history 测试为 `23 passed`，相关 Ruff check/format 与 `git diff --check` 通过。4096-env/1-update gate `2026-07-13_19-42-46_recovery_history5_wscale10_std1_4096_gate` 实际构建 actor/critic 138D/168D；98,304 steps、31,027 steps/s、reward -0.88、std 1.00、catastrophic 0，runtime YAML 确认 action wheel scale 10、init std 1、resume false。
+- 新正式 run `2026-07-13_19-43-59_recovery_history5_wscale10_std1_fresh_5k` 以 seed42/4096 env/5000 iterations fresh 启动；PID 28576、PPID1、SID28576，日志 `/tmp/recovery_history5_wscale10_std1_fresh_5k.log`。iteration 84 时约 47,985 steps/s、std 1.22、catastrophic 0、fatal marker 0，近期显存 4,924 MiB；`model_0.pt` SHA256 `4df48d8c...17a3ad`。早期 reward -758.39 仍属高探索/未收敛阶段，不能据此判断最终 tracking/jitter。
+- 一次带内联完整训练命令的 `pgrep` guard 自匹配而安全退出，未启动 gate；改用进程可执行名过滤时 awk shell quoting 又报语法错误，但 guard 变量为空后仍启动了唯一 gate。gate 完成后已确认没有残留训练进程；正式 run 启动前 GPU 空闲。后续防重检查应使用 `ps -C python -C python3 ... | grep`，不要让 guard 搜索自身完整命令行。
+
+## 2026-07-13 五帧 history model3000 高度 0.30 m / 速度 1.5 m/s MP4
+
+- 用户要求固定 `height=0.30 m`、`vx=1.5 m/s` 录制视频；查询时最新落盘 checkpoint 仍为 `model_3000.pt`。不改产品源码，以临时 context/运行时单场景列表运行现有 worker；seed 47、8 s、yaw 0、其余 command 0，独立输出在 `custom_eval/model_3000_h030_vx15/`。
+- MP4 H.264 1280×720@50 FPS、399 frames、7.98 s、1,171,954 bytes，SHA256 `1150ff91140d28e7a8bbd92da97fa7f2ad676768ef392192bb6f1d395eed3d62`；本地为 `artifacts/recovery_history5/model_3000-h030-vx15-{step-0.mp4,metrics.json,telemetry.json}`。
+- 400 telemetry rows 的 vx/yaw command 恒定为 `1.5/0.0`，0 termination/non-finite。后 4 s vx mean/RMSE `1.4699/0.0700 m/s`、height mean/RMSE `0.3049/0.0056 m`；后 2 s vx mean/RMSE `1.4699/0.0699 m/s`、height mean/RMSE `0.3049/0.0056 m`、yaw RMS `0.1358 rad/s`。
+- 评估后确认训练 PID 2577 仍在运行，iteration 3343/5000、reward 253.13、catastrophic 0；早先过窄的 `pgrep` 模式未匹配到 `--task` 参数位置，并非训练退出。
+
+## 2026-07-13 五帧 history model3000 高度 0.35 m / 速度 1.5 m/s MP4
+
+- 用户要求最新 checkpoint 执行 height/vx `0.35 m/1.5 m/s` 固定 command。查询时训练 iteration 3017，最新已落盘 checkpoint 为 `model_3000.pt`，5,868,725 bytes，SHA256 `912a7f53c31b1f8cc3a9e6c766780d1c06de781925743af1ac5f81ec2737fe10`。
+- 不改产品源码，用临时 context/运行时单场景列表运行现有 worker；seed 47、8 s、height 0.35 m、vx 1.5 m/s、yaw 0，其余 command 0。训练 height 范围为 0.20–0.32 m，所以本次为轻度 OOD 高度泛化测试。run-local 输出在 `custom_eval/model_3000_h035_vx15/`，不覆盖 standard eval。
+- MP4 H.264 1280×720@50 FPS、399 frames、7.98 s、1,348,208 bytes，SHA256 `29a80335f9fc4b9277a56df1f67cd26670cd553215164e7d04ec34bb06bb2a27`；本地为 `artifacts/recovery_history5/model_3000-h035-vx15-{step-0.mp4,metrics.json,telemetry.json}`。
+- 400 telemetry rows 的 vx/yaw command 恒定为 `1.5/0.0`，0 termination/non-finite。后 4 s vx mean/RMSE `1.3848/0.1317 m/s`，height mean/RMSE `0.3486/0.0044 m`；后 2 s 分别为 `1.3907/0.1275 m/s` 与 `0.3500/0.0027 m`，yaw RMS `0.1383 rad/s`。评估后训练 iteration 3076，reward 251.78、std 0.29、catastrophic 0，无 fatal marker。
+
+## 2026-07-13 五帧 history model2500 固定 2 m/s MP4
+
+- 用户要求用最新 checkpoint 查看 2 m/s 效果。查询时训练 iteration 2605，最新已落盘 checkpoint 为 `model_2500.pt`，5,868,725 bytes，SHA256 `3488dfb7f72a41ed5add8c8e7a6a106f9c193a2a3e4f495d434186d909e7f397`。
+- 不改生产源码，用临时 context 和运行时单场景列表启动现有 worker；seed 47、8 s、`vx=2.0 m/s`、yaw 0、height 0.26 m、其余 command 0。输出位于 run-local `custom_eval/model_2500_forward_2mps/`，不覆盖标准 six-scenario eval。
+- MP4 H.264 1280×720@50 FPS、399 frames、7.98 s、1,271,481 bytes，SHA256 `586288bba673076d6fafdb0b0c72f6ea770dc03af3b9b6416e02458626688f2b`；本地为 `artifacts/recovery_history5/model_2500-forward-2mps-{step-0.mp4,metrics.json,telemetry.json}`。
+- 400 telemetry rows 的 command 恒定为 vx/yaw `2.0/0.0`，0 termination/non-finite。整段 mean/RMSE `1.1087/1.3055 m/s` 混入起步瞬态；后 4 s mean/RMSE `1.9047/0.0991 m/s`，后 2 s mean `1.8967 m/s`。评估后训练 iteration 2674，reward 250.94、std 0.30、catastrophic 0，无 fatal marker。
+
+## 2026-07-13 五帧 history model2000 最新 checkpoint MP4
+
+- 用户要求录制最新 model；查询时正式训练为 iteration 2318，最新已落盘 checkpoint 是 `model_2000.pt`。使用与 model500/1000 一致的 seed-47、`flat-basic` 6×4 s、deterministic actor/no corruption、translation-only 78° FOV、`--no-rerun` 合同；worker exit 0，训练未暂停。
+- MP4 H.264 1280×720@50 FPS、1199 frames、23.98 s、2,353,573 bytes，SHA256 `8b1cd91f19cf1e4a2d8596c75971089001f4c048eb1f1925c5102c3d768e7b22`。本地保存 `artifacts/recovery_history5/model_2000-{step-0.mp4,metrics.json,telemetry.json}`。
+- metrics 为 1200 steps、0 termination/non-finite、vx/yaw RMSE `0.16774/0.24523`。相比 model1000，yaw RMSE 下降，vx RMSE 上升；stand/reverse vx RMSE 为 `0.27276/0.22349`。因已知聚合 RMSE 不能代替视觉 tracking/jitter 验收，当前不提前宣称 model2000 行为优劣。
+- 评估完成后训练仍在 PID 2577 健康继续：iteration 2410、约 51,039 steps/s、reward 250.81、std 0.29、catastrophic 0，无 fatal/NaN/OOM marker。
+
+## 2026-07-13 五帧 history model1000 对比评估
+
+- 正式 run 健康落盘 `model_1000.pt`，SHA256 `0fc487f4dc4dffa55e6a4c272461fc1daa1cad6dc281f2f62e35e20302e0e65d`。首次 CLI 调用错用 `--checkpoint model_1000.pt` 选择器而 exit 1，未启动 Isaac worker/未改动训练；改用支持的 `--checkpoint 1000` 后完整评估 exit 0。
+- 同 model500 的 seed-47、`flat-basic` 6 scenarios × 4 s、deterministic actor/no corruption、translation-only 78° FOV、`--no-rerun` 合同。MP4 H.264 1280×720@50 FPS、1199 frames、23.98 s、2,522,290 bytes，SHA256 `4827d724baabcd7dcd6276f4f2052df0e697e0e6cd2402af7b5616133528ca71`。
+- 1200 rows 全部 finite、0 termination；总 vx/yaw RMSE `0.21508/0.70924→0.14640/0.35554`，stand vx/yaw RMSE `0.22301/1.08666→0.16683/0.40593`。用户查看并排 MP4 后明确更正：model1000 相比 model500 的抖动已改善。stand base-height 整段 detrended RMS/p2p 混入姿态漂移和大幅运动，不能单独代表高频抖动；flat-basic 仍未记录 pitch-rate/逐关节 action/wheel saturation，后续需专用 jitter probe 量化改善幅度。
+- 用户进一步目视判定 model1000 tracking 较差。拆分每场景后 100 steps 的稳态 telemetry：yaw-left `1.325` vs command `1.0`，yaw-right `-1.561` vs `-1.0`，forward-turn `1.050` vs `0.8`，过冲约 `33%/56%/31%`；forward/reverse 线速度 `0.436/-0.567` vs `0.5/-0.5`，仍约 13% 欠冲/过冲。因此结论为“相对 model500 聚合 RMSE 改善，但绝对 tracking 不合格”。
+- 本地保存 `artifacts/recovery_history5/model_1000-{step-0.mp4,metrics.json,telemetry.json}`，并生成 1280×360@50 FPS、23.98 s 的 `model_500-vs-1000-side-by-side.mp4`。评估后正式训练仍在 PID 2577 继续，iteration 1110、显存 5,042 MiB。
+
+## 2026-07-13 五帧 history model500 MP4
+
+- 用户要求查看 500 轮模型。确认正式 `recovery_history5_fresh_5k` 已产出 `model_500.pt`，并在训练继续运行时用现有 `se3rl eval` 固定合同执行 seed-47、6 scenarios × 4 秒、`--no-rerun` 录制；未暂停或修改训练。
+- 用户查看 MP4 后明确反馈“还是抖得不行”。诊断确认 stand 段 velocity/yaw-rate RMSE 为 `0.2230 m/s`/`1.0867 rad/s`，且 telemetry 未包含 pitch-rate、逐关节 action 或 wheel saturation；因此当前 `model_500` 判为控制质量不合格，但尚不能仅凭该早期 checkpoint 判定完整 5k 历史方案最终失败。后续 checkpoint 必须补同 seed jitter telemetry 并与 4–5 Hz baseline 比较。
+- Eval runtime 确认 actor `command+proprio=138D`、critic `command+privileged=168D`，固定世界朝向相机为 78° FOV。输出 `model_500-step-0.mp4` 为 H.264 1280×720@50 FPS、1199 frames、23.98 秒、2,933,035 bytes，SHA256 `0faac91344dae0ee942009f786d0d09ea12f482ff7c20c5695d5e49882799ece`；日志无 Traceback/OOM/Error/NaN。
+- metrics 为 1200 steps、0 termination/non-finite、vx/yaw RMSE `0.21508/0.70924`。stand/reverse/yaw_right 三处抽帧均有有效机器人/地面/箭头，但 stand 与 yaw_right 明显侧倾或倒地；termination 合同未触发，不能用 survival 1.0 代替姿态/recovery 验收。
+- MP4 与 metrics 已同步本地为 `artifacts/recovery_eval/model_500-history5-recovery-eval.mp4` 和 `model_500-history5.metrics.json`，本地 SHA/ffprobe 与远端一致。录制后正式训练继续到 iteration 641，reward 242.20、std 0.44、catastrophic 0。
+
+## 2026-07-13 五帧历史 4096-env 门禁与 fresh 5k 启动
+
+- 用户开启 GPUFree 服务器并授权训练验证。远端 RTX 4090 24 GiB 空闲、数据盘余 27 GiB、无训练进程；远端 dirty worktree 为上一轮功能文件，未整仓覆盖。首次 `rsync` 因远端无命令在传输前失败，改用仅包含 13 个本次路径的 tar stream，同步后逐项 SHA256 为 13/13 OK。
+- 训练机相关 Ruff 全通过，`test_serialleg_observations.py + test_recovery_contract.py + test_experiment_tools.py` 为 `26 passed in 4.53s`。
+- 4096-env/1-update CUDA gate `2026-07-13_17-22-53_recovery_history5_4096_gate` 通过：actor/critic 首层 138/168，98,304 steps、29,441 steps/s、peak GPU 4,818 MiB、reward -0.84、std 0.50、catastrophic 0，保存 model0。日志 `/tmp/recovery_history5_4096_gate_20260713_172240.log`。
+- 正式训练以 seed 42、4096 env、5000 iterations、24 steps/env、save interval 500、`resume=false` 启动；PID 2577/PPID1/SID2577，日志 `/tmp/recovery_history5_fresh_5k.log`，run 为 `2026-07-13_17-24-18_recovery_history5_fresh_5k`。两次带内联 `pgrep` 的防重启动 guard 因匹配自身命令行而安全退出，未生成日志或训练进程；随后拆分 probe/launch 后成功启动唯一进程。
+- runtime YAML 锁定 seed42、actor `command+proprio`、critic `command+privileged`、normalization/PPO 预期值和 `resume=false`。iteration 117 时 49,073 steps/s、value 22.9083、reward -652.90、std 0.72、catastrophic 0，显存约 5.0 GiB，无 NaN/OOM/Traceback；早期完整 episode reward 尚未收敛，训练继续运行。
+
+## 2026-07-13 Recovery Kyber-style 五帧历史实施
+
+- 用户在只读方案核对后明确授权实施。为保留既有 flat 策略/checkpoint，历史只落到 `SerialLeg-Recovery-v0`：新增 `command/proprio/privileged` groups，当前 command 为 8D，policy/critic 历史分别为 `26×5=130D` 与 `32×5=160D`；RSL-RL mapping 得到 actor 138D、critic 168D，MLP/PPO 其余结构不变。
+- `mdp/observations.py` 新增 Recovery 维度、term dims 和 term-major slice metadata；`recovery_env_cfg.py` 复用 flat 观测 producers/noise，group history length 固定 5、oldest→newest flatten，privileged group 关闭 corruption。保留工作树中既有的 Recovery wheel action-rate `-0.02` 变更，没有回滚或归因到本任务。
+- `rsl_rl_ppo_cfg.py` 为 Recovery 设置 actor `['command','proprio']`、critic `['command','privileged']`；flat mapping 保持 `actor/critic`。eval worker 与 play 入口改为根据 runner actor groups 关闭 corruption，兼容两种任务；run manifest 按 task 写入 34/40 或 138/168。
+- `smoke_recovery_reset.py` 增加 exact group shape、finite 和 reset 首帧五槽复制 gate；静态测试锁 group term、布局、PPO mapping、flat 不变、eval corruption 与 manifest。README/实验工具文档已移除“Recovery 可直接加载 flat model499”的错误说明，明确必须 fresh train。
+- 本机 4-env CPU runtime smoke 通过，manager 实际显示 `command/proprio/privileged=(8/130/160)`；2 steps finite，reset history、height default、passive/tendon/clearance 均通过。随后 4-env CPU PPO 完成 96 samples/1 update，实际模型首层为 actor `138→512`、critic `168→512`，生成 `.../2026-07-13_17-09-31_recovery_history5_smoke/model_0.pt`（5,868,043 bytes）。
+- 聚焦 pytest 为 `25 passed, 1 deselected`；完整同组测试唯一失败是本机未安装可选 `rerun-sdk` 的既有 Rerun export test。相关 Ruff、`py_compile` 与 `git diff --check` 通过。尚未跑 4096-env GPU capacity gate、长训练、JIT/ONNX 或 sim2sim。
+
+## 2026-07-13 Kyber-style 5-frame observation history 方案核对
+
+- 用户指定参考 `BioInnov/kyber_rl_lab`，在网络输入端堆叠历史观测，并要求当前先不改代码。GitHub connector/网页因仓库权限返回 404；通过现有只读 Git 凭据确认远端默认分支为 `main@93aacd351cb9a453baa9c29141dcc1e0fb6bde4e`，在 `/tmp/kyber_rl_lab_ref_93aacd` 浅克隆核对，未触碰本项目或已有 dirty Kyber 工作树。
+- Kyber Recovery 将 command 与 proprioception 分为独立 observation groups：runner actor 使用 `['vel_cmd','proprio']`、critic 使用 `['vel_cmd','priv']`；`ProprioceptionCfg.history_length=5`，`PrivilegedCfg` 继承同一 5 帧历史并关闭 corruption，command group 不堆叠。网络仍为 `[512,256,128]` ELU MLP。
+- 读取固定 IsaacLab `b4c3210` 的 `ObservationManager`/`CircularBuffer`：每个 term 独立缓存，输出顺序为 term-major 且每个 term 内 oldest→newest；reset 清空计数/数据，首次 append 把当前样本复制到全部历史槽。Kyber MuJoCo `ObservationBuilder` 也按相同顺序和首帧复制语义组装部署输入。
+- 当前 actor 34D 可分为 8D command/jump 与 26D proprioception；critic 另有 6D privileged state。按 Kyber 的 5 帧方案，actor 为 `8 + 26×5 = 138D`，critic 为 `8 + (26+6)×5 = 168D`。50 Hz 下 5 个样本时间戳跨度 80 ms，对 4.5 Hz 振荡约覆盖 130° 相位。
+- 为保持可归因性，首次实施建议只改变 observation history：继续使用 feed-forward MLP、actor normalization off、critic normalization on、24-step rollout、现有 Recovery PPO/reward/action/物理和训练预算，并从 seed 42 fresh train。现有 checkpoint 输入形状不兼容。当前未修改任何生产/测试源码或配置。
+
+## 2026-07-13 同 PhysX reference GRU 与 hidden-state 因果消融
+
+- 按用户“先找问题、不要改代码”的约束，使用 inline Python 只读加载 `origin/se3_wheel_leg_spring_add:assets/base_model/recovery-flat.pt` Git object 和本地 `m005/model_4999.pt`；没有创建诊断源码文件，也未改 production config。运行时只在内存中构造 34D normalized hidden-512 GRU。
+- 两个 checkpoint 使用同一个本机 CPU PhysX、1 env、seed 47、50 Hz、actor corruption/startup randomization/curriculum push 关闭、0.26 m 固定站立命令、相同 closure-consistent 人工状态和 50-step zero-action 初态；各 rollout 600 control steps，均无 termination。
+- 当前 `m005` unnormalized MLP 精确复现 `4.5 Hz`：稳态 pitch RMS/p2p95=`3.159°/9.319°`，pitch-rate RMS=`1.546 rad/s`，镜像 wheel-coordinate action/speed difference RMS=`1.070/12.477 rad/s`，wheel action 超 `71.81 rad/s` no-load target 的比例为 9.3%。这把远端 MP4 的约 4 Hz 视觉证据落到了本机 raw state/action telemetry。
+- 旧 normalized GRU 在完全相同当前 PhysX 中先从约 `-30°` zero-action 倾倒状态恢复，再稳定在约 `3.5°`；分析窗 pitch RMS/p2p95=`0.060°/0.203°`，pitch-rate RMS=`0.000804 rad/s`，wheel action/speed difference RMS=`0.000998/0.0395 rad/s`，0% 超 no-load target。其标注的 2.5/7.2 Hz 频点幅值接近数值噪声，不是可见极限环。
+- 对同一个 GRU 在每次 policy forward 前清空 hidden state，其他条件不变，立即得到 `4.8 Hz`：pitch RMS/p2p95=`0.393°/1.111°`，pitch-rate RMS=`0.205 rad/s`，wheel action/speed difference RMS=`0.180/2.368 rad/s`。因此历史隐状态对抑制 4–5 Hz wheel–plant 相位振荡具有直接因果作用，不只是“旧 checkpoint 参数更好”的相关性。
+- 结论边界：PhysX/contact/backend 与 `wheel_action_rate` 已从主因降级；当前从已验证 GRU 合同改为部分可观测的无记忆 MLP 是核心迁移错误。normalization、64-step rollout、PPO 参数和 `5.33×` 训练预算仍与 architecture 同时不同，需要在获准改配置/训练后再逐项拆分。
+- Isaac Sim 启动仍打印既有 inotify `errno=28` change-watch 噪声；`df -h/-i` 显示磁盘仅 15%、inode 2%，未影响环境或两次 600-step rollout。并行 Kyber 进程仍占约 5.7 GiB GPU，因此本轮有意使用 CPU PhysX；未终止或修改该用户进程。
+
+## 2026-07-13 wheel reward 之外的抖动根因对照
+
+- 按用户要求停止把 `wheel_action_rate` 数值当主假设，全程未修改生产源码；读取本地旧仓库 `/home/am345/se3_rl`、历史分支 `origin/se3_wheel_leg_spring_add@93f6ba2`、本地备份 checkpoint/config/log 与两段最终 MP4。
+- 对 `-0.02/-0.05` MP4 的首个站立场景做 50–199 帧背景特征光流；left/right/both 三种独立 crop 均得到相同 `4.027 Hz` 主峰。两段视觉 flow RMS 约 `0.44–0.67 px/frame`，说明权重改变了局部幅值但没有改变闭环模态。
+- 最终训练日志中 `-0.02/-0.05` wheel action-rate 为 `-0.0196/-0.0447`，除以权重后原始量约 `0.98/0.894`，只下降约 9%；action-smoothness 为 `-0.1546/-0.1537`，除以 `-0.03` 后约 `5.15/5.12`，几乎不变。更强惩罚没有把策略带到不同的平滑控制解。
+- 源码逐项对照确认参考与当前的 34D actor observation 布局/缩放、6D action、leg/wheel scale `0.25/45`、action clip `100`、4–6 ms delay（5 ms physics 下恒为一拍）、50 Hz control 和分段轮 T-N 包络一致；这些不是当前找到的迁移漂移。
+- 旧分支 exact-reward checkpoint `assets/base_model/recovery-flat.pt` 通过 Git object 只读加载：iteration 4999、34D input、actor normalization enabled、GRU hidden 512、约 1.269M actor values；当前三档 checkpoint 均为 unnormalized 34D MLP、约 0.183M actor values。旧仓库 README 还明确写着 `mlp.pt` 是随机初始化占位，当前没有“同奖励完整 MLP 且不抖”的旧基线。
+- 参考 checkpoint actor normalizer count `2,621,964,288`、env common step `320,064`，精确对应 8192 env；当前合同为 4096 env × 24 steps × 5000，total transitions 仅参考的 `1/5.33`，每 env 步数仅 `120,000/320,064≈37.5%`。同为 5000 iterations 并不代表同训练预算或同 curriculum 熟化程度。
+- 对 baseline/`-0.02/-0.05` MLP 在近似直立固定外部 observation 下只闭合 `last_actions` 递推，均收敛到固定点；局部 last-action Jacobian 谱半径分别约 `0.684/0.641/0.725`。因此 last-action 回灌会影响增益，但不能单独产生持续振荡；必须经 robot state/wheel plant 反馈闭环，与既有 hold-wheels A/B 一致。
+- 本阶段形成的工作假设是：相同瞬时 34D actor 输入缺少 base linear velocity、wheel contact 和 base height，旧 normalized GRU 可用历史隐状态估计/滤波这些量，当前无记忆 MLP 只能依赖 IMU/joint/wheel velocity/last-action 代理，学成约 4 Hz 有相位滞后的动态平衡。该假设随后已由上节同 PhysX reference-GRU/hidden-reset A/B 验证；24-step rollout、normalization 和较小样本预算的独立贡献仍未拆分，backend 已降为次级风险。
+
+## 2026-07-13 wheel action-rate 三档 fresh 5k 串行训练与值守
+
+- 在远端确认 RTX 4090 空闲、数据盘剩余 28 GB、无既有训练进程或长 run 名称冲突后，创建仅位于远端 `/tmp` 的串行监督器；不新增仓库训练代码。
+- 监督器顺序固定为 `-0.02→-0.05→-0.1`，每档使用 `SerialLeg-Recovery-v0`、4096 env、seed 42、5000 iterations、fresh `resume=false`。每档独立日志/进程组；只有 exit 0、iteration 4999 且 `model_4999.pt` 存在才启动下一档。
+- 安全值守检查 fatal log marker、非有限指标、reward/value/action-std/leg-acc 数值爆炸和 catastrophic spread；异常时停止当前进程组并终止 sweep。历史健康/失败日志回放分别判定正常与 value-loss 爆炸，监督器本地/远端 `py_compile` 及本地 Ruff 通过。
+- 第一档 `-0.02` 于 13:00 健康完成：`2026-07-13_10-38-12_recovery_wheel_rate_m002_fresh_5k` iteration 4999 reward/value/std/wheel-rate/leg-acc=`261.20/0.1667/0.31/-0.0196/-0.0043`，catastrophic 0，8466.76 秒；安全跨过全部 cache stages 与旧 3193–3204 污染窗口。`model_4999.pt` 为 4,441,781 bytes、SHA256 `9455a0e4...e4832abf`，72 个 tensor 全部 finite。
+- 监督器等待 20 秒后于 13:00:26 自动启动第二档 `-0.05`，run `2026-07-13_13-00-34_recovery_wheel_rate_m005_fresh_5k`；runtime YAML 精确记录 weight `-0.05`、seed 42、4096 env、5000 iterations、24 steps、`resume=false`。iteration 16 reward `-257.40`、std `0.51`、catastrophic 0，无 NaN/OOM。
+- `-0.05` 已越过 iteration 2000 的 25% cache stage，并额外值守至 2112；精确 iteration 2000 reward/value/std/wheel-rate/leg-acc=`253.38/0.2281/0.30/-0.0383/-0.0049`、catastrophic 0。切换后 value loss 短时升至 0.3994，至 2094 回落为 0.2093；iteration 1780/1910 附近各有 `catastrophic=0.0002` 的孤点并自行回零，未形成扩散。`model_2000.pt` 4,441,781 bytes、SHA256 `4886587a...39bdf59`。
+- `-0.05` 后续健康通过 2600 cache stage 与旧 3193–3204 首爆窗口。iteration 3000 reward/value/std/wheel-rate/leg-acc=`254.57/0.1947/0.30/-0.0391/-0.0044`、catastrophic 0，`model_3000.pt` SHA256 `2125b6f0...1b0342f`；逐轮核对 3188–3219 全部有限且 catastrophic 0，关键 3193/3195/3204 reward/value=`255.44/0.1667`、`254.49/0.1855`、`255.49/0.1938`，未复现旧 run 的巨额污染。
+- `-0.05` 已继续通过 3400 与 4200 cache stages，并在每个边界后值守至少 100 轮；至 iteration 4301 reward/value/std=`255.79/0.1558/0.30`、catastrophic 0。精确 iteration 4000 reward/value/std=`257.16/0.1741/0.30`，`model_4000.pt` SHA256 `aed065e3...92cb6e0`；本次 `model_3500.pt` 72 tensors 全 finite、SHA256 `cff68c76...f7e1ad2`，不同于旧失败 run 的污染 checkpoint。
+- `-0.05` 于 15:20 健康完成 iteration 4999：reward/value/std/wheel-rate/leg-acc=`256.17/0.1494/0.31/-0.0447/-0.0049`、catastrophic 0，训练耗时 8347.43 秒；`model_4999.pt` 4,441,781 bytes、SHA256 `8c847802...eceb21b`，72 tensors 全 finite。监督器登记 COMPLETE 后等待 20 秒，自动启动第三档 `-0.1`。
+- `-0.1` run `2026-07-13_15-20-56_recovery_wheel_rate_m010_fresh_5k` 已于 15:20:48 启动，PID `64897`。runtime YAML/Reward Manager 精确确认 seed 42、4096 env、5000 iterations、24 steps、save interval 500、`resume=false`、weight `-0.1`、空 params；iteration 37 reward/value/std=`-509.09/29.8073/0.52`、catastrophic 0，监督器 warning streak 0。
+- 按用户要求录制已完成的前两档最终 checkpoint。为避免 4096-env 训练与渲染争抢 GPU，先等 `-0.1` iteration 506 且 `model_500.pt` 落盘（SHA256 `2aef0731...c0e67c`），再 SIGSTOP 其进程组；监督器无 stale timeout，暂停期间未误判。两段 eval exit 0 后 SIGCONT，训练连续恢复并于 iteration 559 保持 reward/value/std=`259.56/0.2328/0.37`、catastrophic 0、warning streak 0。
+- `-0.02/-0.05` 均使用 `model_4999.pt`、`SerialLeg-Recovery-v0`、seed 47、同一 `flat-basic` 6×4 秒 suite、translation-only 78° FOV 相机与 `--no-rerun`。两段均为 H.264 1280×720@50 FPS、1199 frames、23.98 秒、survival 1.0、1200 steps、0 non-finite；本地 MP4 为 `artifacts/recovery_eval/wheel-rate-m00{2,5}-model4999-recovery-eval.mp4`，抽帧确认机器人/场景/箭头可见。
+- 用户准备关闭服务器后，先冻结第三档并盘点四个有效 run，再把 baseline、`-0.02`、`-0.05` 的全部 11 个现有 checkpoint，以及 `-0.1` partial 的 `model_0.pt/model_500.pt` 拉回本地；每组同时保留 `params/{agent,env}.yaml`、TensorBoard events、`git/se3_rl_lab.diff`，并备份训练/监督器日志、最终 status JSON 与监督器脚本。
+- 本地归档位于 `artifacts/recovery_checkpoints/wheel_action_rate_sweep/`，共 59 files/226 MiB（其中 `SHA256SUMS` 覆盖 57 个数据文件，另含 README 和 manifest）。四组远端/本地逐文件 SHA256 diff 均为空，随后离线 `sha256sum -c SHA256SUMS` 为 57/57 passed。
+- `-0.1` 在用户关机要求下有意停止：常规 SIGTERM 未使 Isaac Sim 退出后，冻结并 SIGKILL 进程组；监督器如实记录 phase `halted`、iteration 667、return code `-9`、reward/value/std/leg-acc=`259.9/0.1549/0.31/-0.0061`、catastrophic `0`。这不是训练数值异常；该 run 未完成，正式比较必须 fresh 重跑。最终复查远端 supervisor/train process `0`、GPU compute process `0`。
+
+## 2026-07-13 wheel action-rate 三档配置与短训练 gate
+
+- 按用户要求只修改 Recovery wheel action-rate penalty：默认 `-0.001→-0.02`，不增加 upright gate；腿 action-rate、action smoothness、动作映射、filter、PD、观测和其他 reward 均未改。
+- 复用 train.py 现有 Hydra 通道运行 `env.rewards.wheel_action_rate.weight=-0.05/-0.1`，没有新增 CLI 参数或 task variant；每个 run 的 `params/env.yaml` 已验证精确保存实际权重。
+- 更新 `scripts/test_recovery_contract.py`：默认 reward table 锁 `-0.02`，并新增 AST 契约确认 wheel term 无 `params`/gate。
+- 本地 Ruff/format/py_compile/diff 通过；本地 pytest 在导入 torch 时进程 abort（exit 134，非断言失败）。同步两个目标文件到训练机后，相关 recovery/experiment/actuator/observation 回归为 `29 passed in 4.80s`，Ruff/format/diff 通过。
+- 三档各完成 4096-env/1-update CUDA gate：`-0.02/-0.05/-0.1` mean reward 为 `-0.85/-0.86/-0.87`，wheel action-rate episode penalty 为 `-0.0003/-0.0006/-0.0013`，std 均 `0.50`、catastrophic 均 `0`、无 NaN/OOM；只证明配置与数值链路健康。
+- 短 gate run 分别为 `2026-07-13_10-28-44_recovery_wheel_rate_m002_gate`、`10-29-28_recovery_wheel_rate_m005_gate`、`10-30-05_recovery_wheel_rate_m010_gate`。完整 fresh sweep 已在上述新条目中启动。
+
+## 2026-07-13 服务器日志复核与抖动因果 A/B
+
+- 用户提供服务器 endpoint 后，在本机 `~/.ssh/config` 恢复 `se3_rl_lab_gpufree` alias；连接确认远端 `gpufree-container`/RTX 4090 正常。endpoint/密钥未写入仓库。
+- 读取 `/tmp/recovery_height_default_fresh_5k.log`、TensorBoard events、model4999 SHA 与既有 `/tmp/jitter_probe*`。最终日志为 reward `259.81`、action smoothness `-0.1783`、leg action-rate `-0.0012`、wheel action-rate `-0.0013`；训练从 iteration 1000 起长期接受约 `-0.16~-0.19` smoothness 代价。
+- 新增临时 `/tmp/jitter_causality_probe.py`（不进仓库），先 warmup 300 steps，再做 policy/hold-all/hold-legs/hold-wheels；同时跑 startup domain randomization on/off。randomized 与 nominal 的 root-z/pitch 主峰分别约 `4.00/4.67 Hz`，nominal pitch-rate std `1.56 rad/s`，排除 seed-47 domain randomization 为主因。
+- 冻结最近 50 拍平均动作：前 10 steps 仍约 `3.37°` 直立，pitch-rate std `1.262→0.323 rad/s`、root-z std `1.245→0.658 mm`、轮力矩均值 `2.499→0.530 N·m`，随后因失去反馈逐渐倾倒；证明恒定目标下 plant 振荡快速衰减，极限环由 policy 逐拍更新主动维持。
+- 只冻结腿动作/目标后机器人保持直立，wheel action、root-z、pitch 仍同频约 `3.67 Hz`；只冻结轮动作时前 10 steps pitch-rate std 降至 `0.379 rad/s`，随后失去轮式平衡。主驱动因此定位到轮速度 policy，腿目标振荡属于耦合响应。
+- model4999 站立稳态左右 wheel target 约 `22.7%/38.7%` 超过 `71.81 rad/s` 空载速度，wheel torque 约 `42.7%/48.0%` 采样大于 `3.6 N·m`；轮 policy 实际在用饱和式速度目标维持动态平衡。
+
+## 2026-07-13 抖动根因源码复核
+
+- 只读核对 `mdp/actions.py`、`mdp/rewards.py`、`recovery_env_cfg.py`、actor observations、SerialLeg actuator/YAML、eval camera/worker 与参考 recovery 配置；未修改生产源码。
+- 现有 probe 与源码一致指向 actor–plant 闭环极限环：50 Hz policy 直接写腿位置目标，只有固定 1 个 5 ms physics step 延迟，无 rate limiter/low-pass；model4999 的 target delta RMS `0.204 rad/20 ms` 在 `Kp=60` 下对应约 `12.2 N·m` 的单拍比例力矩增量量级。
+- 当前 leg action-rate 权重为 `-0.001`，比旧 flat 的 `-0.48` 弱 480 倍；smoothness 为二阶差分 `-0.03`。按 model4999 `4.67 Hz`、raw action delta RMS `0.666` 的近似正弦估算，leg action-rate/smoothness 未缩放代价约 `0.0018/0.0178`，不足以证明策略会偏好静态平衡。
+- 当前 actor 是不做 observation normalization 的 feed-forward MLP；34D actor observation 没有 base linear velocity、wheel contact force 或 base height，这三项只在 critic 40D privileged observation 中。参考 recovery/discovery 使用 normalized GRU + 64-step rollout；该差异可能使 actor 依赖瞬时 joint/IMU/last-action 代理并形成相位锁定，但尚无同环境架构 A/B，不能写成已确认根因。
+- 发现未排除的 eval 变量：worker 只关闭 actor observation corruption，仍运行 startup material、base mass/COM 与 actuator-gain randomization，且抖动 probe 只使用 seed 47 单环境。因此“随机化后的 actor–plant 闭环确有振荡”已确认，但名义 plant 的严重程度仍为 `UNKNOWN`。
+- 下一步应先做同 seed nominal-vs-randomized plant A/B 和稳态 hold-action/hold-target A/B；本机没有当前 run checkpoint、MP4 或 raw telemetry，SSH alias `se3_rl_lab_gpufree` 在本机无法解析，未重跑模型。
+
 ## 2026-07-13 height-conditioned recovery 提交与推送
 
 - 从同步的 `main@46edeee` 创建 `codex/height-conditioned-recovery`，明确排除未跟踪的 `.codex/` 可视化和 `artifacts/` MP4/PNG/metrics，只暂存 22 个源码、测试、文档与 handoff 文件。

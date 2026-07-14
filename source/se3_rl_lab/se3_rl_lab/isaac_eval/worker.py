@@ -31,7 +31,11 @@ import se3_rl_lab.tasks  # noqa: F401
 from se3_rl_lab.assets.robots.serialleg_contract import SERIALLEG_CONTRACT
 from se3_rl_lab.isaac_eval.camera import translated_follow_view, widened_focal_length
 from se3_rl_lab.isaac_eval.collision_preview import spawn_collision_preview
-from se3_rl_lab.isaac_eval.schedule import configure_fixed_command_eval, set_command_and_refresh_observations
+from se3_rl_lab.isaac_eval.schedule import (
+    configure_fixed_command_eval,
+    disable_policy_observation_corruption,
+    set_command_and_refresh_observations,
+)
 from se3_rl_lab.tools.reports import evaluation_score, write_evaluation_report
 from se3_rl_lab.tools.rerun_export import export_rerun
 
@@ -129,7 +133,7 @@ def main() -> int:
     env_cfg.sim.use_fabric = False
     env_cfg.seed = 47
     env_cfg.log_dir = str(run_dir)
-    env_cfg.observations.actor.enable_corruption = False
+    disable_policy_observation_corruption(env_cfg, agent_cfg)
     env_cfg.commands.velocity_height.debug_vis = True
     configure_fixed_command_eval(
         env_cfg,

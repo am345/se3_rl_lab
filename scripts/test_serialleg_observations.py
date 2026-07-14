@@ -1,4 +1,4 @@
-"""CPU-only contract tests for SerialLeg's 34D/40D observations."""
+"""CPU-only contracts for flat observations and Recovery history metadata."""
 
 from __future__ import annotations
 
@@ -149,6 +149,33 @@ def test_layout_metadata_is_contiguous_and_exact() -> None:
         (37, 39),
         (39, 40),
     ]
+
+
+def test_recovery_history_layout_is_term_major_and_exact() -> None:
+    assert obs.RECOVERY_OBSERVATION_HISTORY_LENGTH == 5
+    assert obs.RECOVERY_COMMAND_OBSERVATION_DIM == 8
+    assert obs.RECOVERY_PROPRIOCEPTION_OBSERVATION_DIM == 26
+    assert obs.RECOVERY_PRIVILEGED_PROPRIOCEPTION_DIM == 32
+    assert obs.RECOVERY_ACTOR_OBSERVATION_DIM == 138
+    assert obs.RECOVERY_CRITIC_OBSERVATION_DIM == 168
+    assert obs.RECOVERY_OBSERVATION_GROUP_DIMS == {
+        "command": 8,
+        "proprio": 130,
+        "privileged": 160,
+    }
+    assert [(item.start, item.stop) for item in obs.RECOVERY_COMMAND_LAYOUT.values()] == [(0, 5), (5, 8)]
+
+    for term_dims, layout, expected_stop in (
+        (obs.RECOVERY_PROPRIOCEPTION_TERM_DIMS, obs.RECOVERY_PROPRIOCEPTION_LAYOUT, 130),
+        (obs.RECOVERY_PRIVILEGED_TERM_DIMS, obs.RECOVERY_PRIVILEGED_LAYOUT, 160),
+    ):
+        cursor = 0
+        for term_name, term_dim in term_dims.items():
+            term_slice = layout[term_name]
+            assert term_slice.start == cursor
+            assert term_slice.stop - term_slice.start == term_dim * obs.RECOVERY_OBSERVATION_HISTORY_LENGTH
+            cursor = term_slice.stop
+        assert cursor == expected_stop
 
 
 def test_absent_command_term_fails_hard_after_command_migration() -> None:

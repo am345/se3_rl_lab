@@ -49,7 +49,7 @@ joints:
       role: active
       profile: wheel
       joints: [l_wheel_Joint, r_wheel_Joint]
-      action_scale: 45.0
+      action_scale: 10.0
     closed_chain_passive:
       role: passive
       profile: linkage

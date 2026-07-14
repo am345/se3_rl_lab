@@ -37,6 +37,8 @@ setup(
     include_package_data=True,
     package_data={
         "se3_rl_lab": [
+            "assets/robots/serialleg/scene.xml",
+            "assets/robots/serialleg/websim_manifest.json",
             "assets/robots/serialleg/mjcf/*.xml",
             "assets/robots/serialleg/urdf/*.urdf",
             "assets/robots/serialleg/usd/*.usd",

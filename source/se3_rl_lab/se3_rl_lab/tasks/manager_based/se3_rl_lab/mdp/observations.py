@@ -9,34 +9,31 @@ from typing import TYPE_CHECKING, Any
 
 import torch
 
+from se3_rl_lab import serialleg_policy_contract as _policy_contract
+
+ACTOR_OBSERVATION_DIM = _policy_contract.ACTOR_OBSERVATION_DIM
+ACTOR_OBSERVATION_LAYOUT = _policy_contract.ACTOR_OBSERVATION_LAYOUT
+COMMAND_SCALE = _policy_contract.COMMAND_SCALE
+CRITIC_OBSERVATION_DIM = _policy_contract.CRITIC_OBSERVATION_DIM
+CRITIC_PRIVILEGED_LAYOUT = _policy_contract.CRITIC_PRIVILEGED_LAYOUT
+OBSERVATION_CLIP = _policy_contract.OBSERVATION_CLIP
+RECOVERY_ACTOR_OBSERVATION_DIM = _policy_contract.RECOVERY_ACTOR_OBSERVATION_DIM
+RECOVERY_COMMAND_LAYOUT = _policy_contract.RECOVERY_COMMAND_LAYOUT
+RECOVERY_COMMAND_OBSERVATION_DIM = _policy_contract.RECOVERY_COMMAND_OBSERVATION_DIM
+RECOVERY_CRITIC_OBSERVATION_DIM = _policy_contract.RECOVERY_CRITIC_OBSERVATION_DIM
+RECOVERY_OBSERVATION_GROUP_DIMS = _policy_contract.RECOVERY_OBSERVATION_GROUP_DIMS
+RECOVERY_OBSERVATION_HISTORY_LENGTH = _policy_contract.RECOVERY_OBSERVATION_HISTORY_LENGTH
+RECOVERY_PRIVILEGED_LAYOUT = _policy_contract.RECOVERY_PRIVILEGED_LAYOUT
+RECOVERY_PRIVILEGED_PROPRIOCEPTION_DIM = _policy_contract.RECOVERY_PRIVILEGED_PROPRIOCEPTION_DIM
+RECOVERY_PRIVILEGED_TERM_DIMS = _policy_contract.RECOVERY_PRIVILEGED_TERM_DIMS
+RECOVERY_PROPRIOCEPTION_LAYOUT = _policy_contract.RECOVERY_PROPRIOCEPTION_LAYOUT
+RECOVERY_PROPRIOCEPTION_OBSERVATION_DIM = _policy_contract.RECOVERY_PROPRIOCEPTION_OBSERVATION_DIM
+RECOVERY_PROPRIOCEPTION_TERM_DIMS = _policy_contract.RECOVERY_PROPRIOCEPTION_TERM_DIMS
+
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
     from isaaclab.managers import SceneEntityCfg
 
-
-ACTOR_OBSERVATION_DIM = 34
-CRITIC_OBSERVATION_DIM = 40
-OBSERVATION_CLIP = 100.0
-COMMAND_SCALE = (2.0, 0.25, 5.0, 5.0, 5.0)
-
-# Public, immutable layout metadata.  Keeping the slices beside the producers makes
-# checkpoint/deployment compatibility reviewable without launching Isaac Sim.
-ACTOR_OBSERVATION_LAYOUT = {
-    "base_ang_vel": slice(0, 3),
-    "projected_gravity": slice(3, 6),
-    "commands": slice(6, 11),
-    "leg_joint_pos": slice(11, 17),
-    "leg_joint_vel": slice(17, 21),
-    "wheel_pos_zero": slice(21, 23),
-    "wheel_vel": slice(23, 25),
-    "last_actions": slice(25, 31),
-    "jump_commands": slice(31, 34),
-}
-CRITIC_PRIVILEGED_LAYOUT = {
-    "base_lin_vel": slice(34, 37),
-    "wheel_contact_forces": slice(37, 39),
-    "base_height": slice(39, 40),
-}
 
 _LEG_ACTIVE_ROD_COEFFICIENTS = ((1.0, -1.0), (-1.0, 1.0))
 

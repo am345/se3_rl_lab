@@ -74,6 +74,8 @@ import gymnasium as gym
 import se3_rl_lab.tasks  # noqa: F401
 import torch
 from rsl_rl.runners import DistillationRunner, OnPolicyRunner
+from se3_rl_lab.isaac_eval.schedule import disable_policy_observation_corruption
+from se3_rl_lab.websim import attach_serialleg_websim_metadata
 
 import carb
 import omni.physx.bindings._physx as physx_bindings
@@ -116,6 +118,9 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
     # handle deprecated configurations
     agent_cfg = handle_deprecated_rsl_rl_cfg(agent_cfg, installed_version)
+
+    if isinstance(env_cfg, ManagerBasedRLEnvCfg):
+        disable_policy_observation_corruption(env_cfg, agent_cfg)
 
     # set the environment seed
     # note: certain randomizations occur in the environment initialization so we set the seed here
@@ -184,6 +189,8 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
     # export the trained policy to JIT and ONNX formats
     export_model_dir = os.path.join(os.path.dirname(resume_path), "exported")
+    sim_dt = float(env.unwrapped.physics_dt)
+    policy_dt = float(env.unwrapped.step_dt)
 
     if version.parse(installed_version) >= version.parse("4.0.0"):
         # use the new export functions for rsl-rl >= 4.0.0
@@ -208,7 +215,15 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         export_policy_as_jit(policy_nn, normalizer=normalizer, path=export_model_dir, filename="policy.pt")
         export_policy_as_onnx(policy_nn, normalizer=normalizer, path=export_model_dir, filename="policy.onnx")
 
-    dt = env.unwrapped.step_dt
+    if "Recovery" in task_name:
+        attach_serialleg_websim_metadata(
+            os.path.join(export_model_dir, "policy.onnx"),
+            task_name=task_name,
+            sim_dt=sim_dt,
+            policy_dt=policy_dt,
+        )
+
+    dt = policy_dt
 
     # reset environment
     obs = env.get_observations()

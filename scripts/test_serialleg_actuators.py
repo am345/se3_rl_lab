@@ -105,14 +105,14 @@ def test_asset_wires_explicit_motor_models_without_physics_velocity_clamps() -> 
     assert "velocity_limit_sim" not in wheel_keywords
 
 
-def test_policy_action_contract_remains_unchanged() -> None:
+def test_policy_action_contract_matches_robot_config() -> None:
     action_path = ROOT / "source/se3_rl_lab/se3_rl_lab/tasks/manager_based/se3_rl_lab/mdp/actions.py"
     source = action_path.read_text(encoding="utf-8")
     robot_config_path = ROOT / "source/se3_rl_lab/se3_rl_lab/assets/robots/serialleg/robot_config.yaml"
     robot_config = yaml.safe_load(robot_config_path.read_text(encoding="utf-8"))
     groups = robot_config["joints"]["groups"]
     assert groups["legs"]["action_scale"] == 0.25
-    assert groups["wheels"]["action_scale"] == 45.0
+    assert groups["wheels"]["action_scale"] == 10.0
     assert '_LEG_ACTION_SCALE = _required_action_scale("legs")' in source
     assert '_WHEEL_ACTION_SCALE = _required_action_scale("wheels")' in source
     assert "leg_scale: float = _LEG_ACTION_SCALE" in source

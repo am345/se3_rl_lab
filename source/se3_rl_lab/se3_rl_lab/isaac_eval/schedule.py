@@ -14,6 +14,22 @@ class EvaluationTiming:
     protected_duration_s: float
 
 
+def disable_policy_observation_corruption(env_cfg: Any, agent_cfg: Any) -> tuple[str, ...]:
+    """Disable corruption for every observation group consumed by the actor."""
+    obs_groups = getattr(agent_cfg, "obs_groups", None)
+    actor_groups = obs_groups.get("actor") if isinstance(obs_groups, dict) else None
+    if not actor_groups:
+        raise ValueError("agent config must define at least one actor observation group")
+    disabled: list[str] = []
+    for group_name in actor_groups:
+        group_cfg = getattr(env_cfg.observations, group_name, None)
+        if group_cfg is None:
+            raise AttributeError(f"environment does not define actor observation group {group_name!r}")
+        group_cfg.enable_corruption = False
+        disabled.append(group_name)
+    return tuple(disabled)
+
+
 def configure_fixed_command_eval(
     env_cfg: Any,
     *,

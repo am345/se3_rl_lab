@@ -29,11 +29,44 @@ from se3_rl_lab.tasks.manager_based.se3_rl_lab.mdp.height_defaults import (  # n
     get_height_default,
     policy_default_from_height,
 )
+from se3_rl_lab.tasks.manager_based.se3_rl_lab.mdp.observations import (  # noqa: E402
+    RECOVERY_OBSERVATION_GROUP_DIMS,
+    RECOVERY_OBSERVATION_HISTORY_LENGTH,
+    RECOVERY_PRIVILEGED_LAYOUT,
+    RECOVERY_PRIVILEGED_TERM_DIMS,
+    RECOVERY_PROPRIOCEPTION_LAYOUT,
+    RECOVERY_PROPRIOCEPTION_TERM_DIMS,
+)
 from se3_rl_lab.tasks.manager_based.se3_rl_lab.mdp.recovery_events import (  # noqa: E402
     RECOVERY_PASSIVE_JOINTS,
 )
 
 from isaaclab_tasks.utils import parse_env_cfg  # noqa: E402
+
+
+def _validate_observations(observations: dict[str, torch.Tensor], *, require_filled_history: bool) -> None:
+    if set(observations) != set(RECOVERY_OBSERVATION_GROUP_DIMS):
+        raise RuntimeError(f"unexpected recovery observation groups: {sorted(observations)}")
+    for group_name, expected_dim in RECOVERY_OBSERVATION_GROUP_DIMS.items():
+        value = observations[group_name]
+        if value.shape != (ARGS.num_envs, expected_dim):
+            raise RuntimeError(
+                f"unexpected {group_name} observation shape: {tuple(value.shape)} != {(ARGS.num_envs, expected_dim)}"
+            )
+        if not torch.isfinite(value).all():
+            raise RuntimeError(f"non-finite observation group: {group_name}")
+    if not require_filled_history:
+        return
+    for group_name, term_dims, layout in (
+        ("proprio", RECOVERY_PROPRIOCEPTION_TERM_DIMS, RECOVERY_PROPRIOCEPTION_LAYOUT),
+        ("privileged", RECOVERY_PRIVILEGED_TERM_DIMS, RECOVERY_PRIVILEGED_LAYOUT),
+    ):
+        group = observations[group_name]
+        for term_name, term_dim in term_dims.items():
+            frames = group[:, layout[term_name]].reshape(ARGS.num_envs, RECOVERY_OBSERVATION_HISTORY_LENGTH, term_dim)
+            expected = frames[:, :1, :].expand_as(frames)
+            if not torch.equal(frames, expected):
+                raise RuntimeError(f"reset history was not first-filled for {group_name}.{term_name}")
 
 
 def main() -> None:
@@ -42,6 +75,7 @@ def main() -> None:
     unwrapped = env.unwrapped
     unwrapped.common_step_counter = int(ARGS.iteration) * 24
     observations, _ = env.reset()
+    _validate_observations(observations, require_filled_history=True)
     robot = unwrapped.scene["robot"]
     action_term = unwrapped.action_manager.get_term("serialleg_delayed")
     if not action_term.cfg.height_conditioned_action_default:
@@ -84,9 +118,6 @@ def main() -> None:
     tendon_vel = float(torch.max(torch.abs(robot.data.joint_vel[:, tendon_ids])))
     if tendon_pos > 1.0e-4 or tendon_vel > 1.0e-4:
         raise RuntimeError(f"tendon-root reset mismatch: pos={tendon_pos:.3e} vel={tendon_vel:.3e}")
-    for name, value in observations.items():
-        if not torch.isfinite(value).all():
-            raise RuntimeError(f"non-finite reset observation group: {name}")
     step_env = env
     policy = None
     if ARGS.checkpoint:
@@ -116,8 +147,7 @@ def main() -> None:
         if not torch.isfinite(reward).all():
             bad = torch.nonzero(~torch.isfinite(reward), as_tuple=False).flatten()
             raise RuntimeError(f"non-finite reward at step={step} env_ids={bad[:16].tolist()}")
-        if any(not torch.isfinite(value).all() for value in observations.values()):
-            raise RuntimeError(f"non-finite observation at step={step}")
+        _validate_observations(observations, require_filled_history=False)
         max_reward = max(max_reward, float(torch.max(torch.abs(reward))))
     if policy is None and ARGS.action_std == 0.0:
         zero_action_target_error = float(torch.max(torch.abs(action_term.leg_targets - reference_default)))

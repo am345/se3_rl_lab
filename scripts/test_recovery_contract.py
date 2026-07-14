@@ -39,7 +39,7 @@ EXPECTED_WEIGHTS = {
     "stand_still": -2.0,
     "joint_pos_penalty": -1.0,
     "leg_action_rate": -0.001,
-    "wheel_action_rate": -0.001,
+    "wheel_action_rate": -0.02,
     "action_smoothness": -0.03,
     "leg_torques": -2.0e-4,
     "leg_dof_acc": -2.5e-7,
@@ -61,6 +61,55 @@ def _classes() -> dict[str, ast.ClassDef]:
     return {node.name: node for node in module.body if isinstance(node, ast.ClassDef)}
 
 
+def _nested_class(parent: ast.ClassDef, name: str) -> ast.ClassDef:
+    return next(node for node in parent.body if isinstance(node, ast.ClassDef) and node.name == name)
+
+
+def _assigned_names(parent: ast.ClassDef) -> set[str]:
+    return {
+        node.targets[0].id
+        for node in parent.body
+        if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name)
+    }
+
+
+def test_recovery_observation_groups_keep_commands_current_and_stack_proprioception() -> None:
+    observations = _classes()["RecoveryObservationsCfg"]
+    command = _nested_class(observations, "CommandCfg")
+    proprio = _nested_class(observations, "ProprioceptionCfg")
+    privileged = _nested_class(observations, "PrivilegedCfg")
+
+    assert _assigned_names(command) == {"commands", "jump_commands"}
+    assert "history_length" not in ast.unparse(command)
+    assert _assigned_names(proprio) == {
+        "base_ang_vel",
+        "projected_gravity",
+        "leg_joint_pos",
+        "leg_joint_vel",
+        "wheel_pos_zero",
+        "wheel_vel",
+        "last_actions",
+    }
+    proprio_source = ast.unparse(proprio)
+    assert "self.history_length = mdp.RECOVERY_OBSERVATION_HISTORY_LENGTH" in proprio_source
+    assert "self.flatten_history_dim = True" in proprio_source
+
+    assert [ast.unparse(base) for base in privileged.bases] == ["ProprioceptionCfg"]
+    assert _assigned_names(privileged) == {"base_lin_vel", "wheel_contact_forces", "base_height"}
+    assert "self.enable_corruption = False" in ast.unparse(privileged)
+
+    group_fields = {
+        node.target.id: ast.unparse(node.value)
+        for node in observations.body
+        if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name)
+    }
+    assert group_fields == {
+        "command": "CommandCfg()",
+        "proprio": "ProprioceptionCfg()",
+        "privileged": "PrivilegedCfg()",
+    }
+
+
 def test_recovery_reward_names_and_weights_are_locked() -> None:
     rewards = _classes()["RecoveryRewardsCfg"]
     actual: dict[str, float] = {}
@@ -73,6 +122,24 @@ def test_recovery_reward_names_and_weights_are_locked() -> None:
         if weight is not None:
             actual[node.targets[0].id] = float(ast.literal_eval(weight))
     assert actual == EXPECTED_WEIGHTS
+
+
+def test_recovery_wheel_action_rate_is_ungated() -> None:
+    rewards = _classes()["RecoveryRewardsCfg"]
+    wheel_action_rate = next(
+        node.value
+        for node in rewards.body
+        if isinstance(node, ast.Assign)
+        and len(node.targets) == 1
+        and isinstance(node.targets[0], ast.Name)
+        and node.targets[0].id == "wheel_action_rate"
+    )
+    assert isinstance(wheel_action_rate, ast.Call)
+    assert ast.unparse(wheel_action_rate.func) == "RewTerm"
+    configured = {keyword.arg: keyword.value for keyword in wheel_action_rate.keywords}
+    assert float(ast.literal_eval(configured["weight"])) == -0.02
+    assert "params" not in configured
+    assert "gate" not in ast.unparse(wheel_action_rate)
 
 
 def test_recovery_yaw_tracking_preserves_large_error_gradient() -> None:
@@ -123,7 +190,7 @@ def test_recovery_changes_rewards_terminations_reset_and_height_action_default()
         for node in recovery.body
         if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name)
     }
-    assert assigned == {"rewards", "terminations"}
+    assert assigned == {"observations", "rewards", "terminations"}
     source = ast.unparse(recovery)
     assert "self.events.reset_base" in source
     assert "reset_root_state_recovery_mixed" in source
@@ -132,7 +199,6 @@ def test_recovery_changes_rewards_terminations_reset_and_height_action_default()
     assert "self.actions.serialleg_delayed.height_conditioned_action_default = True" in source
     assert "self.actions.serialleg_delayed.action_default_command_name" in source
     assert "velocity_height" in source
-    assert "self.observations" not in source
     assert "self.commands" not in source
 
 
@@ -215,7 +281,7 @@ def test_recovery_keeps_reference_hard_error_termination_and_is_registered() -> 
     assert "recovery_env_cfg:RecoveryEnvCfg" in registration
 
 
-def test_recovery_uses_reference_exploration_settings_without_changing_flat() -> None:
+def test_recovery_uses_requested_exploration_settings_without_changing_flat() -> None:
     registration = REGISTER_PATH.read_text(encoding="utf-8")
     assert registration.count("rsl_rl_ppo_cfg:RecoveryPPORunnerCfg") == 1
     assert registration.count("rsl_rl_ppo_cfg:PPORunnerCfg") == 1
@@ -229,11 +295,15 @@ def test_recovery_uses_reference_exploration_settings_without_changing_flat() ->
         for node in recovery.body
         if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name)
     }
+    assert ast.literal_eval(assignments["obs_groups"]) == {
+        "actor": ["command", "proprio"],
+        "critic": ["command", "privileged"],
+    }
     actor = assignments["actor"]
     algorithm = assignments["algorithm"]
     distribution = next(keyword.value for keyword in actor.keywords if keyword.arg == "distribution_cfg")
     init_std = next(keyword.value for keyword in distribution.keywords if keyword.arg == "init_std")
-    assert ast.literal_eval(init_std) == 0.5
+    assert ast.literal_eval(init_std) == 1.0
     expected_algorithm = {
         "entropy_coef": 0.00516,
         "learning_rate": 3.0e-4,
@@ -245,6 +315,17 @@ def test_recovery_uses_reference_exploration_settings_without_changing_flat() ->
         if keyword.arg in expected_algorithm
     }
     assert actual_algorithm == expected_algorithm
+
+    flat = next(node for node in module.body if isinstance(node, ast.ClassDef) and node.name == "PPORunnerCfg")
+    flat_assignments = {
+        node.targets[0].id: node.value
+        for node in flat.body
+        if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name)
+    }
+    assert ast.literal_eval(flat_assignments["obs_groups"]) == {
+        "actor": ["actor"],
+        "critic": ["critic"],
+    }
 
 
 def test_recovery_cache_contains_full_closedchain_state() -> None:

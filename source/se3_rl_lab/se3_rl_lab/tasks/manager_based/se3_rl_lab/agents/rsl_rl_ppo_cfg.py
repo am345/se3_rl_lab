@@ -45,13 +45,15 @@ class PPORunnerCfg(RslRlOnPolicyRunnerCfg):
 
 @configclass
 class RecoveryPPORunnerCfg(PPORunnerCfg):
-    """Recovery PPO settings aligned with the reference task's exploration schedule."""
+    """Recovery PPO with current commands and five-frame proprioception history."""
+
+    obs_groups = {"actor": ["command", "proprio"], "critic": ["command", "privileged"]}
 
     actor = RslRlMLPModelCfg(
         hidden_dims=[512, 256, 128],
         activation="elu",
         obs_normalization=False,
-        distribution_cfg=RslRlMLPModelCfg.GaussianDistributionCfg(init_std=0.5, std_type="scalar"),
+        distribution_cfg=RslRlMLPModelCfg.GaussianDistributionCfg(init_std=1.0, std_type="scalar"),
     )
     algorithm = RslRlPpoAlgorithmCfg(
         value_loss_coef=1.0,
