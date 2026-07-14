@@ -2,6 +2,7 @@
 
 | Date | Command/Check | Result | Notes |
 | --- | --- | --- | --- |
+| 2026-07-14 | submodule `main` fast-forward + push | passed | `websim_se3/main` 从 `f0234cb` 合并到功能线并以 handoff closeout 更新至 `be736cf`；远端 main 与本地一致。 |
 | 2026-07-14 | submodule + parent scoped commit/push | passed | submodule `be0fb2e` + handoff `80a1153` 推送至 `origin/codex/bootstrap-websim`；父仓库功能提交 `d9afe2a` 推送至 `origin/codex/height-conditioned-recovery`；`artifacts/` 排除。首次 submodule commit 因缺少 identity 被拒，沿用既有作者写入 repo-local config 后成功。 |
 | 2026-07-14 | WebSim sim2sim fixes：parent pytest、submodule pytest、frontend unit/typecheck/build、real HTTP fallen canary、禁用词/Git boundary/diff-check | passed | parent `5 passed`；submodule `8 passed`；Vitest `8 passed`（HTTP 默认 skip）且 typecheck/build passed；scale45 HTTP 25 cycles/0.5 s finite、10 mm reset clearance、closure peak/final/RMS `5.381/2.239/2.291 mm`；禁用词内容/文件名 0 命中。首次组合命令在 frontend 目录找不到父仓库 `.venv`，未执行生成或测试，随后从父仓库根目录完整重跑通过。 |
 | 2026-07-14 | sibling normal sim2sim source audit + native MuJoCo model-array comparison | gap localized | 两份 closed-chain 模型 mass/inertia/joints/armature/damping/contact/equality/tendon arrays max diff 0。确认 WebSim angular velocity double rotation、continuous front-joint PD 未 wrap、Euler vs normal runtime implicitfast 三项差异；reset 分布另不等价。本轮只读，无源码修改。 |

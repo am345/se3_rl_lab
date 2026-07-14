@@ -4,7 +4,7 @@
 
 - Last updated: 2026-07-14（Asia/Shanghai）
 - Workspace: 本机 `/home/am345/se3_rl_lab`；训练机 SSH alias `se3_rl_lab_gpufree`；远端根目录 `/root/gpufree-data/se3-workspace/se3_rl_lab`。
-- Git: 本地位于 `codex/height-conditioned-recovery`，跟踪同名 `origin` 分支；Recovery history + WebSim 集成功能提交 `d9afe2a` 已推送。submodule 分支 `codex/bootstrap-websim` 已推送至 `80a1153`。未跟踪 `artifacts/` 明确未提交。
+- Git: 本地位于 `codex/height-conditioned-recovery`，跟踪同名 `origin` 分支；Recovery history + WebSim 集成功能提交 `d9afe2a` 已推送。submodule 已 fast-forward 合并到其 `main` 并推送至 `be736cf`。未跟踪 `artifacts/` 明确未提交。
 - Current objective: 修复 scale45 browser runtime 与正常 native MuJoCo sim2sim 的四项已证实语义差异，并完成跨端、构建和真实 HTTP 验证。
 - Current status: 已完成并发布：free-joint body-frame observation、LF0/RF0 shortest-angle PD、`implicitfast + Newton + 100 iterations` scene 与 10 mm floor-aware fallen reset。native/browser fixture、父仓库 5 tests、submodule 8 pytest、前端 8 unit tests、typecheck/build 与真实 scale45 HTTP fallen 25-cycle rollout均通过。
 
