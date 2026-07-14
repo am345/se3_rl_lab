@@ -101,7 +101,19 @@ def main() -> None:
     passive_ids, _ = robot.find_joints(list(RECOVERY_PASSIVE_JOINTS), preserve_order=True)
     tendon_ids, _ = robot.find_joints(list(SERIALLEG_CONTRACT.tendon_root_joint_names), preserve_order=True)
     cache_mask = unwrapped._recovery_cache_reset_mask
-    expected_cache = 0.25 if ARGS.iteration >= 2000 else 0.10 if ARGS.iteration >= 1500 else 0.0
+    expected_cache = (
+        0.70
+        if ARGS.iteration >= 1600
+        else 0.60
+        if ARGS.iteration >= 1400
+        else 0.45
+        if ARGS.iteration >= 1150
+        else 0.25
+        if ARGS.iteration >= 900
+        else 0.10
+        if ARGS.iteration >= 700
+        else 0.0
+    )
     actual_cache = float(cache_mask.float().mean())
     if expected_cache > 0.0 and not (0.5 * expected_cache <= actual_cache <= 1.5 * expected_cache):
         raise RuntimeError(f"cache ratio mismatch: expected≈{expected_cache} actual={actual_cache}")

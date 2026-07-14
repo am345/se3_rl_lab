@@ -29,6 +29,7 @@ from isaaclab_tasks.utils.hydra import load_cfg_from_registry
 
 import se3_rl_lab.tasks  # noqa: F401
 from se3_rl_lab.assets.robots.serialleg_contract import SERIALLEG_CONTRACT
+from se3_rl_lab.assets.robots.serialleg_motors import M3508_C620_14
 from se3_rl_lab.isaac_eval.camera import translated_follow_view, widened_focal_length
 from se3_rl_lab.isaac_eval.collision_preview import spawn_collision_preview
 from se3_rl_lab.isaac_eval.schedule import (
@@ -103,11 +104,31 @@ def _configure_camera_fov(camera_prim_path: str = "/OmniverseKit_Persp") -> None
 def _scenario_summary(name: str, samples: list[dict]) -> dict:
     velocity_mse = sum((row["base_vx"] - row["command_vx"]) ** 2 for row in samples) / len(samples)
     yaw_mse = sum((row["base_yaw_rate"] - row["command_yaw_rate"]) ** 2 for row in samples) / len(samples)
+    wheel_errors = [
+        target - velocity
+        for row in samples
+        for target, velocity in zip(row["wheel_target_rad_s"], row["wheel_velocity_rad_s"], strict=True)
+    ]
+    wheel_action_deltas = [
+        current - previous
+        for previous_row, current_row in zip(samples, samples[1:], strict=False)
+        if previous_row["scenario"] == current_row["scenario"]
+        for previous, current in zip(previous_row["raw_action"][4:6], current_row["raw_action"][4:6], strict=True)
+    ]
+    saturation_ratios = [ratio for row in samples for ratio in row["wheel_torque_saturation_ratio"]]
     return {
         "name": name,
         "steps": len(samples),
         "velocity_rmse": math.sqrt(velocity_mse),
         "yaw_rate_rmse": math.sqrt(yaw_mse),
+        "pitch_rate_rms": math.sqrt(sum(row["base_pitch_rate"] ** 2 for row in samples) / len(samples)),
+        "wheel_target_error_rms": math.sqrt(sum(value**2 for value in wheel_errors) / len(wheel_errors)),
+        "wheel_action_delta_rms": (
+            math.sqrt(sum(value**2 for value in wheel_action_deltas) / len(wheel_action_deltas))
+            if wheel_action_deltas
+            else 0.0
+        ),
+        "wheel_torque_saturation_fraction": sum(value >= 0.98 for value in saturation_ratios) / len(saturation_ratios),
         "terminations": sum(int(row["terminated"]) for row in samples),
     }
 
@@ -133,6 +154,13 @@ def main() -> int:
     env_cfg.sim.use_fabric = False
     env_cfg.seed = 47
     env_cfg.log_dir = str(run_dir)
+    wheel_action_scale = float(
+        context.get("wheel_action_scale_override", env_cfg.actions.serialleg_delayed.wheel_scale)
+    )
+    if wheel_action_scale <= 0.0:
+        raise ValueError(f"wheel action scale must be positive, got {wheel_action_scale}")
+    env_cfg.actions.serialleg_delayed.wheel_scale = wheel_action_scale
+    print(f"[eval-contract] wheel_action_scale={wheel_action_scale}", flush=True)
     disable_policy_observation_corruption(env_cfg, agent_cfg)
     env_cfg.commands.velocity_height.debug_vis = True
     configure_fixed_command_eval(
@@ -166,6 +194,13 @@ def main() -> int:
     runner.load(str(checkpoint))
     policy = runner.get_inference_policy(device=unwrapped.device)
     robot = unwrapped.scene["robot"]
+    action_term = unwrapped.action_manager.get_term("serialleg_delayed")
+    wheel_joint_ids, wheel_joint_names = robot.find_joints(
+        list(SERIALLEG_CONTRACT.actuator_groups["wheels"].joint_names),
+        preserve_order=True,
+    )
+    if tuple(wheel_joint_names) != SERIALLEG_CONTRACT.actuator_groups["wheels"].joint_names:
+        raise RuntimeError(f"wheel joint order mismatch: {tuple(wheel_joint_names)}")
     collision_preview.update(robot)
     _update_follow_camera(unwrapped.sim, robot)
     _configure_camera_fov()
@@ -194,6 +229,12 @@ def main() -> int:
                     bool(torch.isfinite(value).all())
                     for value in (robot.data.root_state_w, robot.data.joint_pos, robot.data.joint_vel)
                 )
+                raw_action = [float(value) for value in action_term.raw_actions[0].tolist()]
+                processed_action = [float(value) for value in action_term.processed_actions[0].tolist()]
+                wheel_target = [float(value) for value in action_term.wheel_targets[0].tolist()]
+                wheel_velocity = [float(value) for value in robot.data.joint_vel[0, wheel_joint_ids].tolist()]
+                wheel_torque = [float(value) for value in robot.data.applied_torque[0, wheel_joint_ids].tolist()]
+                wheel_torque_limit = [float(value) for value in M3508_C620_14.torque_limit_np(wheel_velocity).tolist()]
                 row = {
                     "step": global_step,
                     "scenario": scenario_name,
@@ -201,11 +242,24 @@ def main() -> int:
                     "command_yaw_rate": float(command[1].item()),
                     "base_vx": float(robot.data.root_lin_vel_b[0, 0].item()),
                     "base_yaw_rate": float(robot.data.root_ang_vel_b[0, 2].item()),
+                    "base_roll_rate": float(robot.data.root_ang_vel_b[0, 0].item()),
+                    "base_pitch_rate": float(robot.data.root_ang_vel_b[0, 1].item()),
                     "base_world_x": float(robot.data.root_pos_w[0, 0].item()),
                     "base_world_y": float(robot.data.root_pos_w[0, 1].item()),
                     "base_height": float(robot.data.root_pos_w[0, 2].item()),
                     "loop_residual_m": _loop_residual(robot),
                     "virtual_root_drift_rad": _virtual_root_drift(robot),
+                    "raw_action": raw_action,
+                    "processed_action": processed_action,
+                    "leg_target_rad": [float(value) for value in action_term.leg_targets[0].tolist()],
+                    "wheel_target_rad_s": wheel_target,
+                    "wheel_velocity_rad_s": wheel_velocity,
+                    "wheel_applied_torque_nm": wheel_torque,
+                    "wheel_torque_limit_nm": wheel_torque_limit,
+                    "wheel_torque_saturation_ratio": [
+                        abs(torque) / max(limit, 1.0e-9)
+                        for torque, limit in zip(wheel_torque, wheel_torque_limit, strict=True)
+                    ],
                     "terminated": bool(dones[0].item()),
                     "finite": finite,
                 }
@@ -216,11 +270,13 @@ def main() -> int:
 
     velocity_mse = sum((row["base_vx"] - row["command_vx"]) ** 2 for row in samples) / len(samples)
     yaw_mse = sum((row["base_yaw_rate"] - row["command_yaw_rate"]) ** 2 for row in samples) / len(samples)
+    diagnostic_summary = _scenario_summary("all", samples)
     metrics = {
         "schema_version": 1,
         "suite": context["suite"],
         "checkpoint_name": checkpoint.stem,
         "checkpoint_path": str(checkpoint),
+        "wheel_action_scale": wheel_action_scale,
         "preview_geometry": {
             "meshes": collision_preview.mesh_count,
             "cylinders": collision_preview.cylinder_count,
@@ -230,6 +286,10 @@ def main() -> int:
             "survival_rate": 1.0 - sum(int(row["terminated"]) for row in samples) / len(samples),
             "velocity_rmse": math.sqrt(velocity_mse),
             "yaw_rate_rmse": math.sqrt(yaw_mse),
+            "pitch_rate_rms": diagnostic_summary["pitch_rate_rms"],
+            "wheel_target_error_rms": diagnostic_summary["wheel_target_error_rms"],
+            "wheel_action_delta_rms": diagnostic_summary["wheel_action_delta_rms"],
+            "wheel_torque_saturation_fraction": diagnostic_summary["wheel_torque_saturation_fraction"],
             "max_loop_residual_m": max(row["loop_residual_m"] for row in samples),
             "max_virtual_root_drift_rad": max(row["virtual_root_drift_rad"] for row in samples),
             "non_finite_samples": sum(not row["finite"] for row in samples),

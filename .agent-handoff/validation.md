@@ -2,6 +2,24 @@
 
 | Date | Command/Check | Result | Notes |
 | --- | --- | --- | --- |
+| 2026-07-14 | compressed curriculum focused pytest + Ruff | passed | `.venv/bin/python -m pytest -q scripts/test_recovery_contract.py scripts/test_experiment_tools.py scripts/test_serialleg_actuators.py` 为 `28 passed`；五个改动 Python 文件 Ruff clean。 |
+| 2026-07-14 | RTX4090 `smoke_recovery_reset.py --num-envs 64 --iteration 1600 --steps 4` | passed | exit0；新课程 iteration1600 的70% cache与满 root/joint reset 合同通过，无 runtime exception。 |
+| 2026-07-14 | RTX4090 4-env flat task smoke，iteration1750 curriculum probe | passed | exit0；最终 velocity `±2.4/±12` 与 push `±2.0` 断言通过，zero/controlled rollout finite，loop residual `<0.095 mm`。 |
+| 2026-07-14 | recovery benchmark standard cohort，checkpoint 500–3000，256 env×8 s | passed | cache fraction严格0、满 root/joint 难度；settled success `0.39/98.05/99.22/99.61/98.05/99.22%`，全部 catastrophic 0；结果 `artifacts/recovery_eval/recovery-benchmark/standard-256x8.json`。 |
+| 2026-07-14 | recovery benchmark held-out cache cohort，checkpoint 500–3000，256 env×8 s | passed | `cache_split=eval`、cache fraction严格1；settled success `0/98.44/99.61/100/100/99.61%`，全部 catastrophic 0；结果 `artifacts/recovery_eval/recovery-benchmark/cache-eval-256x8.json`。 |
+| 2026-07-14 | `python3 -m py_compile artifacts/recovery_eval/recovery-benchmark/benchmark_recovery_checkpoints.py` | passed | 可复现诊断脚本静态语法检查；实际远端 standard/cache 两组均 exit 0。 |
+| 2026-07-14 | model2500/model3000 + old model4000 seed47 6×4 s hard-suite headless eval | passed / model2500 selected | 各 1200 steps、0 termination/non-finite。model2500 相对 baseline：vx/pitch/target-error/raw-delta/saturation 改善 `6.0%/3.8%/6.8%/44.0%/29.8%`，yaw 差 13.0%；model3000 相对 model2500 的 yaw/target-error/raw-delta 恶化 `38.6%/18.2%/62.8%`。 |
+| 2026-07-14 | early stop PID/SID 2194 + GPU/process/log audit | passed / intentional stop at iteration 3040 | SIGTERM 停止推进但 cleanup 未退出，SIGINT 后 2 秒退出，未 SIGKILL；GPU 66 MiB/0%，训练进程 0，fatal marker 0。 |
+| 2026-07-14 | model2500 scp/SHA/checkpoint finite audit | passed | 5,868,725 bytes，SHA256 `3488dfb7...e7f397`；checkpoint iter2500，72 tensors/1,461,681 values 全 finite。 |
+| 2026-07-14 | remote headless fixed-seed model1000/model2000 diagnostics + training STOP/CONT audit | passed / mixed policy improvement | 两次均 600 steps、0 termination/non-finite、wheel scale45；训练在 checkpoint 边界短暂停顿后正常恢复到 iteration 2060。相对失败 model4500，model2000 yaw/pitch/raw action delta 改善 40.3%/41.1%/89.3%；相对旧 model4000，yaw/target error/saturation 仍差 21.8%/39.1%/48.8%。 |
+| 2026-07-14 | local no-video model500/model1000 eval attempts | aborted/superseded | 当前 worker 即使 `--no-video` 仍启用 rendering、collision preview、camera 与 `use_fabric=False`；本机 12 s rollout 约 15 min，并与另一套 Kyber Isaac job 资源时序冲突。未产出 metrics，改由远端 headless 成功完成 model1000/2000。 |
+| 2026-07-14 | detached formal `recovery_history5_scale45_std05_fresh_5k` startup/iteration-121 audit | running / initial health passed | PID/SID `2194`、PPID1；actor/critic 138D/168D，唯一训练进程；iteration 121 reward/std/catastrophic `-583.28/0.73/0`，约 5.0 GiB、fatal scan 0；model0 SHA `cafdf919...139f`。 |
+| 2026-07-14 | local/isolated-remote training source SHA comparison + `git diff --check` | passed | YAML、USD、Recovery PPO cfg、train entry 和 recovery contract test 的 SHA256 逐项一致；tracked diff 无 whitespace error。 |
+| 2026-07-14 | remote 4096-env/1-update gate `recovery_history5_scale45_std05_4096_gate` | passed | exit 0；98,304 steps、27,021 steps/s、reward -0.84、std 0.50、catastrophic 0；runtime YAML 锁 `resume=false`、wheel scale 45、init std 0.5，actor/critic 138D/168D。 |
+| 2026-07-14 | local scale45/std0.5 restore: Ruff + focused pytest + USD rebuild/check | passed | 聚焦测试 `27 passed`；USD 536,325 bytes、SHA256 `5eda521c...a0b1`，converter `--check` 通过；既有 inotify errno 28 噪声未阻止执行。 |
+| 2026-07-14 | local model4000/scale45 vs model4500/scale10 diagnostic eval | passed | 各 600 steps、0 termination/non-finite；补齐 action/target/velocity/torque/pitch telemetry，结果锁定 policy wheel-command roughness。 |
+| 2026-07-14 | training diagnostics Ruff/py_compile/focused pytest/CLI help/diff check | passed | 2 files format+lint，`scripts/test_experiment_tools.py` 9 passed，`--wheel-action-scale` 可见。 |
+| 2026-07-14 | `ssh se3_rl_lab_gpufree` probe | failed/external | 平台端口主动断开；改用空闲本机 RTX 5060 完成单环境诊断，未启动训练。 |
 | 2026-07-14 | submodule V2 scoped commit + direct `main` push | passed | 功能 `3303df8`、发布记录 `416b534` 均已推送到 `am345/websim_se3 main`。 |
 | 2026-07-14 | parent `git commit -m "Publish WebSim V2" && git push origin main` | passed | 父仓库 `2814dfd` 已推送，gitlink 锁定 submodule `416b534`；`artifacts/` 未提交。 |
 | 2026-07-14 | WebSim V2 backend/frontend/build | passed | backend 8、frontend unit 8、typecheck/build；dist 24 MB，ORT WASM 13.48 MB。 |

@@ -1,5 +1,47 @@
 # Current Work Log
 
+## 2026-07-14 Recovery checkpoint 专项测评与课程压缩判断
+
+- 发现既有 fixed-command hard suite 在 reset 时 `common_step_counter=0`，只使用 5° root jitter、零 root velocity、15% joint randomization、0% cache，因此不能作为后期课程 recovery 难度证明；新增独立诊断脚本 `artifacts/recovery_eval/recovery-benchmark/benchmark_recovery_checkpoints.py`。
+- benchmark 对 checkpoint 500–3000 分别运行 256-env×8 s 相同初态；standard cohort 强制 iteration2000 满难度且 cache0，cache cohort 强制 held-out `eval` split cache100%；actor corruption/push 均不进入 rollout，catastrophic/翻正/连续稳定恢复与恢复时间分别统计。
+- standard settled success 为 `0.39/98.05/99.22/99.61/98.05/99.22%`，cache 为 `0/98.44/99.61/100/100/99.61%`；全部 catastrophic 0。model1000 已跨过稳定恢复门槛，model2000 后无持续收益。
+- 训练日志对应 elapsed：1000 `31:01`、1500 `47:34`、2000 `1:03:21`、3040 `1:41:33`。结论为 root/joint/cache recovery 课程偏保守；建议下一轮在约1000–1600完成 recovery 课程，combined 预算2000–2200并设 recovery/tracking/push 三门 gate。生产课程尚未修改或提交。
+- 测评过程中先后修复诊断脚本的两个配置契约：保留 `push_robot` 供 curriculum manager 查找但把 interval 放到窗口外；对 RSL-RL 5.0.1 调用 `handle_deprecated_rsl_rl_cfg`。结果与复现说明在 `artifacts/recovery_eval/recovery-benchmark/README.md`。
+- 用户确认采用压缩方案后，生产阈值已更新：standard root `0/150/350/650/900`，joint `0/150/300/500/700`，cache `0/500/700/900/1150/1400/1600`，velocity `0/300/600/900/1200/1500`，push `0/400/750/1100/1450/1750`；范围/比例值保持此前确认表不变。
+- `scripts/test_recovery_contract.py` 锁定五组精确阈值，Recovery/flat runtime smoke 同步新最终阶段。聚焦 pytest `28 passed`、Ruff clean；远端 64-env iteration1600 reset smoke exit0，4-env flat smoke确认 iteration1750 已到 `vx±2.4/yaw±12/push±2.0` 且 rollout finite。
+
+## 2026-07-14 每 checkpoint 困难评估与 model2500 早停
+
+- 用户要求每个新 checkpoint 运行最难测评，并在已收敛时停止浪费训练。困难合同锁为 seed47、Recovery 初态、6 scenarios×4 s（stand/forward/reverse/yaw-left/yaw-right/forward-turn）、actor corruption off、wheel scale45、无 video/rerun；同时检查最差场景、pitch-rate、wheel target/action/torque、termination/non-finite 和 closure residual。
+- 为避免 2 s/4 s 口径混用，旧 scale45 `model_4000.pt` 也在完全相同 1200-step 合同复测。baseline vx/yaw/pitch/target-error/raw-action-delta/saturation 为 `0.17637/0.22278/0.51970/16.910/0.14780/3.50%`。
+- model2500 困难套件为 `0.16570/0.25178/0.49974/15.756/0.08270/2.46%`，1200 steps、survival 1.0、0 non-finite、max loop residual `0.557 mm`。相对 baseline 除 yaw 高 13.0% 外，其余分别改善 6.0%/3.8%/6.8%/44.0%/29.8%；最差仍为初始 stand/recovery 段，之后五个移动场景 saturation 均为 0。
+- model3000 同合同为 vx/yaw/pitch/target-error/raw-action-delta/saturation `0.17622/0.34901/0.51546/18.619/0.13465/2.33%`；相对 model2500 的 yaw/target-error/raw-action-delta 恶化 `38.6%/18.2%/62.8%`，vx/pitch也恶化 `6.3%/3.1%`。训练 reward 自约 iteration1500 起长期停在 246–250、std约0.29，说明继续训练已进入平台且行为开始退化。
+- 按用户 early-stop 授权在 iteration 3040/5000 停止 former PID/SID 2194。SIGTERM 已停止训练推进并释放大部分显存，但 Isaac cleanup 未退出；随后 SIGINT 2 秒内正常结束，未 SIGKILL。GPU 复核为 66 MiB/0%，无训练进程、fatal marker 0。
+- 最佳 checkpoint 已同步到 `artifacts/recovery_eval/hard-suite-scale45-std05/model_2500/model_2500.pt`，SHA256 `3488dfb7...e7f397`；72 tensors、1,461,681 values 全 finite，checkpoint `iter=2500`。model3000 保留作退化证据但不作为最佳。
+
+## 2026-07-14 scale45/std0.5 恢复与 fresh 5k 启动
+
+- 用户明确授权恢复 wheel scale `45.0` 与 Recovery Gaussian `init_std=0.5` 并重开训练；已同步 YAML、Recovery 专用 PPO、README 和合同断言，重建 USD SHA256 为 `5eda521c...a0b1`。Flat runner 的 `init_std=1.0` 未改变。
+- 本地静态验证为相关 Ruff clean、聚焦 pytest `27 passed`、USD converter `--check` 通过。训练机旧仓库存在大量历史未提交改动，因此未 pull/reset；源码以 tar-over-SSH 同步到隔离根 `/root/gpufree-data/se3-workspace/se3_rl_lab_scale45_std05`。
+- 隔离根复用旧仓库已验证依赖解释器，并通过 `PYTHONPATH=<isolated-root>/source/se3_rl_lab` 锁定新源码。4096-env/1-update gate `2026-07-14_13-55-45_recovery_history5_scale45_std05_4096_gate` 通过：actor/critic 138D/168D、98,304 steps、27,021 steps/s、reward `-0.84`、std `0.50`、catastrophic `0`，runtime YAML 为 wheel scale 45、init std 0.5、resume false。
+- 正式 run `2026-07-14_13-56-55_recovery_history5_scale45_std05_fresh_5k` 以 seed42/4096 env/5000 iterations fresh 启动；PID/SID `2194`、PPID1，日志 `/tmp/recovery_history5_scale45_std05_fresh_5k.log`。最新审计到 iteration 121，reward/std/catastrophic 为 `-583.28/0.73/0`，显存约 5.0 GiB、fatal marker 0；唯一训练进程。`model_0.pt` SHA256 `cafdf919...139f`。
+- 首次防重 `pgrep` 匹配了检查 shell 自身而安全退出，未启动训练；收紧为以 Python 解释器开头的模式后只启动唯一进程。远端 Git clone 因失效的 `127.0.0.1:7890` proxy 失败、远端无 rsync，`uv sync` 的冗余大依赖下载已主动停止；这些尝试未改旧仓库。
+
+## 2026-07-14 scale45/std0.5 训练值守与 model1000/2000 诊断
+
+- 值守到 model500/1000/2000 落盘；训练在 iteration 377 曾单轮 catastrophic `0.0007`，下一审计即回到 0，随后至 iteration 2060 无持续增长、fatal marker 0。model500 SHA `63a298cb...0fa64a4`，model1000 SHA `0fc487f4...0e65d`，model2000 SHA `ec788f55...9a125`。
+- 本机 model500 无视频 eval 因 rendering + `use_fabric=False` + 每步 collision preview/camera update，12 s 仿真约耗 15 min，且与另一套本机 Kyber Isaac 作业发生资源时序冲突，未产出 metrics；该失败不涉及 checkpoint 或远端训练。后续改为远端 RTX4090 headless eval。
+- model1000/model2000 均使用 seed47、6 scenarios×2 s、wheel scale45、actor corruption off、无 video/rerun；评估前对训练进程组 SIGSTOP，shell trap 在退出时 SIGCONT，训练均正常恢复。产物已同步到 `artifacts/recovery_eval/training-diagnostics-v2/model_{1000,2000}-scale45-std05/`。
+- model1000 summary 为 vx/yaw/pitch/raw-wheel-delta/target-error/saturation `0.17277/0.40538/0.73052/0.13237/27.178/9.83%`；相对失败 model4500 的前四项改善 `38.8%/23.6%/41.0%/88.4%`。
+- model2000 summary 为 `0.25147/0.31684/0.72966/0.12236/29.647/9.92%`；相对失败 model4500 的 yaw/pitch/raw-wheel-delta 改善 `40.3%/41.1%/89.3%`，证明恢复路线消除了主要 raw-action 粗糙。但相对旧 model4000，yaw/target-error/saturation 仍差 `21.8%/39.1%/48.8%`；stand saturation `59.5%`，说明站立轮目标仍过激。
+
+## 2026-07-14 训练端 wheel-policy 诊断
+
+- `isaac_eval.worker` 新增 pitch/roll rate、raw/processed action、leg/wheel targets、wheel velocity/applied torque/T-N limit/saturation telemetry，并汇总 pitch-rate、wheel target error、wheel action delta 与 saturation fraction；CLI 新增显式 legacy `--wheel-action-scale`。源码尚未提交。
+- 本机 RTX 5060、seed47、6 scenarios×2 s、no video/rerun 对拍：旧 `model4000/scale45` 对新 `model4500/scale10` 的 wheel action delta RMS `0.10594→1.13899`，物理 target delta约放大 `2.39×`；pitch-rate RMS `0.7151→1.2386`、yaw RMSE `0.2602→0.5308`。
+- wheel target error RMS `21.31→25.53 rad/s`，torque saturation fraction `6.67%→5.33%`；新策略更抖但并未更常顶住电机包络，排除“长期 torque saturation 是主要驱动”。checkpoint wheel std 为旧约 `0.323`、新约 `0.467`。
+- 诊断产物保存在 `artifacts/recovery_eval/training-diagnostics-v2/`。随后用户已授权采用推荐的 scale45/std0.5 fresh 路线，见本页顶部 active run。
+
 ## 2026-07-14 WebSim 产品体验 V2
 
 - 加载链路：ORT 改用纯 WASM 入口，WASM `26.8→13.48 MB`、前端 dist `37→24 MB`；MuJoCo idle 预热，asset/ONNX 分阶段字节进度，server HTTP/1.1 + ETag/cache + 流式文件响应。

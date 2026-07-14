@@ -26,6 +26,7 @@ HEIGHT_DEFAULT_PATH = ROOT / "source/se3_rl_lab/se3_rl_lab/tasks/manager_based/s
 ACTIONS_PATH = ROOT / "source/se3_rl_lab/se3_rl_lab/tasks/manager_based/se3_rl_lab/mdp/actions.py"
 COMMANDS_PATH = ROOT / "source/se3_rl_lab/se3_rl_lab/tasks/manager_based/se3_rl_lab/mdp/commands.py"
 RECOVERY_EVENTS_PATH = ROOT / "source/se3_rl_lab/se3_rl_lab/tasks/manager_based/se3_rl_lab/mdp/recovery_events.py"
+ENV_CFG_PATH = ROOT / "source/se3_rl_lab/se3_rl_lab/tasks/manager_based/se3_rl_lab/se3_rl_lab_env_cfg.py"
 
 EXPECTED_WEIGHTS = {
     "tracking_lin_vel": 3.0,
@@ -71,6 +72,61 @@ def _assigned_names(parent: ast.ClassDef) -> set[str]:
         for node in parent.body
         if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name)
     }
+
+
+def _module_literal(path: Path, name: str):
+    module = ast.parse(path.read_text(encoding="utf-8"))
+    assignment = next(
+        node
+        for node in module.body
+        if isinstance(node, ast.Assign)
+        and len(node.targets) == 1
+        and isinstance(node.targets[0], ast.Name)
+        and node.targets[0].id == name
+    )
+    return ast.literal_eval(assignment.value)
+
+
+def test_compressed_recovery_and_locomotion_curricula_are_locked() -> None:
+    assert _module_literal(RECOVERY_EVENTS_PATH, "_STANDARD_STAGES") == (
+        (0, 5.0, 0.0, 0.0),
+        (150, 10.0, 0.03, 0.10),
+        (350, 15.0, 0.05, 0.20),
+        (650, 20.0, 0.08, 0.30),
+        (900, 25.0, 0.10, 0.40),
+    )
+    assert _module_literal(RECOVERY_EVENTS_PATH, "_JOINT_RANDOMIZATION_STAGES") == (
+        (0, 0.15),
+        (150, 0.25),
+        (300, 0.45),
+        (500, 0.70),
+        (700, 1.0),
+    )
+    assert _module_literal(RECOVERY_EVENTS_PATH, "_CACHE_RATIO_STAGES") == (
+        (0, 0.0),
+        (500, 0.0),
+        (700, 0.10),
+        (900, 0.25),
+        (1150, 0.45),
+        (1400, 0.60),
+        (1600, 0.70),
+    )
+    assert tuple(stage["iteration"] for stage in _module_literal(ENV_CFG_PATH, "_VELOCITY_STAGES")) == (
+        0,
+        300,
+        600,
+        900,
+        1200,
+        1500,
+    )
+    assert tuple(stage["iteration"] for stage in _module_literal(ENV_CFG_PATH, "_PUSH_STAGES")) == (
+        0,
+        400,
+        750,
+        1100,
+        1450,
+        1750,
+    )
 
 
 def test_recovery_observation_groups_keep_commands_current_and_stack_proprioception() -> None:
@@ -303,7 +359,7 @@ def test_recovery_uses_requested_exploration_settings_without_changing_flat() ->
     algorithm = assignments["algorithm"]
     distribution = next(keyword.value for keyword in actor.keywords if keyword.arg == "distribution_cfg")
     init_std = next(keyword.value for keyword in distribution.keywords if keyword.arg == "init_std")
-    assert ast.literal_eval(init_std) == 1.0
+    assert ast.literal_eval(init_std) == 0.5
     expected_algorithm = {
         "entropy_coef": 0.00516,
         "learning_rate": 3.0e-4,
