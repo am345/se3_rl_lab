@@ -31,19 +31,19 @@ from . import mdp
 _POLICY_JOINTS = (*SERIALLEG_POLICY_LEG_JOINTS, *SERIALLEG_WHEEL_JOINTS)
 _VELOCITY_STAGES = (
     {"iteration": 0, "lin_vel_x_range": (-0.4, 0.4), "ang_vel_yaw_range": (-1.0, 1.0)},
-    {"iteration": 400, "lin_vel_x_range": (-0.8, 0.8), "ang_vel_yaw_range": (-2.0, 2.0)},
-    {"iteration": 800, "lin_vel_x_range": (-1.2, 1.2), "ang_vel_yaw_range": (-4.0, 4.0)},
-    {"iteration": 1200, "lin_vel_x_range": (-1.6, 1.6), "ang_vel_yaw_range": (-6.0, 6.0)},
-    {"iteration": 1600, "lin_vel_x_range": (-2.0, 2.0), "ang_vel_yaw_range": (-9.0, 9.0)},
-    {"iteration": 2000, "lin_vel_x_range": (-2.4, 2.4), "ang_vel_yaw_range": (-12.0, 12.0)},
+    {"iteration": 300, "lin_vel_x_range": (-0.8, 0.8), "ang_vel_yaw_range": (-2.0, 2.0)},
+    {"iteration": 600, "lin_vel_x_range": (-1.2, 1.2), "ang_vel_yaw_range": (-4.0, 4.0)},
+    {"iteration": 900, "lin_vel_x_range": (-1.6, 1.6), "ang_vel_yaw_range": (-6.0, 6.0)},
+    {"iteration": 1200, "lin_vel_x_range": (-2.0, 2.0), "ang_vel_yaw_range": (-9.0, 9.0)},
+    {"iteration": 1500, "lin_vel_x_range": (-2.4, 2.4), "ang_vel_yaw_range": (-12.0, 12.0)},
 )
 _PUSH_STAGES = (
     {"iteration": 0, "lin_vel_range": (0.0, 0.0)},
-    {"iteration": 2000, "lin_vel_range": (-0.3, 0.3)},
-    {"iteration": 5000, "lin_vel_range": (-0.5, 0.5)},
-    {"iteration": 10000, "lin_vel_range": (-1.0, 1.0)},
-    {"iteration": 20000, "lin_vel_range": (-1.5, 1.5)},
-    {"iteration": 40000, "lin_vel_range": (-2.0, 2.0)},
+    {"iteration": 400, "lin_vel_range": (-0.3, 0.3)},
+    {"iteration": 750, "lin_vel_range": (-0.5, 0.5)},
+    {"iteration": 1100, "lin_vel_range": (-1.0, 1.0)},
+    {"iteration": 1450, "lin_vel_range": (-1.5, 1.5)},
+    {"iteration": 1750, "lin_vel_range": (-2.0, 2.0)},
 )
 
 ##

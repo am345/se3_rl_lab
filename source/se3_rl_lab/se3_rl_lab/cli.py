@@ -106,6 +106,8 @@ def _eval(args: argparse.Namespace) -> int:
         "rerun": not args.no_rerun,
         "scenario_duration_s": args.scenario_duration,
     }
+    if args.wheel_action_scale is not None:
+        context["wheel_action_scale_override"] = args.wheel_action_scale
     context_path = context_dir / f"{checkpoint.stem}.isaac_eval.json"
     context_path.write_text(json.dumps(context, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     command = [_python(repo_root), "-u", "-m", "se3_rl_lab.isaac_eval.worker", "--context", str(context_path)]
@@ -181,6 +183,11 @@ def build_parser() -> argparse.ArgumentParser:
     evaluate.add_argument("--device", default="cuda:0")
     evaluate.add_argument("--no-video", action="store_true")
     evaluate.add_argument("--no-rerun", action="store_true")
+    evaluate.add_argument(
+        "--wheel-action-scale",
+        type=float,
+        help="Explicitly evaluate a legacy checkpoint with its training-time wheel action scale.",
+    )
     evaluate.set_defaults(handler=_eval)
     runs = subparsers.add_parser("runs", help="List local training runs")
     runs.set_defaults(handler=_runs)

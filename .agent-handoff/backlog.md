@@ -1,5 +1,9 @@
 # Task Backlog
 
+- [x] 对 scale45/std0.5 的 model500–3000 做相同初态、256-env×8 s 的满难度 standard 与 held-out cache recovery benchmark；确认 model1000 已约98%、model2000约100%，课程偏保守。
+- [x] 将 recovery root/joint/cache 与 velocity/push 阈值按用户确认表压缩，精确阈值静态合同和 RTX4090 runtime gates均通过；下一轮 combined 默认预算为2000–2200。
+- [ ] 为压缩后的课程增加受扰 recovery gate；当前 push 阈值2000/5000/10000/... 与5k预算不匹配，本次无 push benchmark 不能证明 push robustness。
+
 - [x] 从零创建 private、`isFork=false` 的 `am345/websim_se3` 独立远端，并以根目录 `websim_se3/` submodule 接入；远端历史只有独立 `Initial commit`。
 - [x] 在 submodule 内完成 SE3 CLI/server route、独立 `run_root`/`asset_root`、Python metadata/session service、模型选择与 React/Vite runtime lifecycle。
 - [x] 在主仓库定义并导出 `se3_rl_lab.websim.deployment.v1`：锁 sim/policy timing、6D joint/action order、138D Recovery observation term/history、command、reset、mixed leg-position/wheel-velocity control、delay 与 T-N 参数；真实 ONNX round-trip/cross-repo parser 已通过。
@@ -40,7 +44,14 @@
 - [x] 完成 WebSim 产品体验 V2 第一轮：ORT 包体减半、runtime 预热/进度/cache/streaming、键盘/preset/倍率/相机/轨道交互、action telemetry 和控制台 UI。
 - [ ] 用户目视验收 V2 的冷/热加载、键鼠/按钮、resize、错误态和视觉；若冷加载仍慢，合并 visual asset bundle、预生成 gzip/brotli 并记录分阶段耗时/FPS。
 - [ ] 若需严格复现训练 recovery 分布，继续加入 joint/root 随机化和独立 position/velocity closure fixture；当前确定性 fallen canary 不覆盖该分布。
-- [ ] 用 `model_4500.pt` 验收站立 4–5 Hz telemetry、wheel saturation、recovery success 和移动 tracking；如用户要求完整 5k，再决定 resume 或 fresh 重跑，不能把 4500 误称为 final 4999。
+- [x] 用同 seed diagnostics 定量 `model_4500.pt` 的站立 telemetry 与 wheel saturation，并据此选择 scale45/std0.5 fresh；`model_4500.pt` 保留为历史失败候选，不 resume、不称为 final 4999。
+- [x] 用相同 seed/6×2 s 补齐 model4000/4500 的 pitch-rate、raw action、wheel target/velocity/torque saturation telemetry；证实 model4500 的主要退化是 wheel-policy roughness，不是 torque envelope 长期饱和。
+- [x] 用户选择 scale45/std0.5 fresh 路线；4096-env gate 已通过，正式 5k 已启动。
+- [x] 按 checkpoint 监控 `recovery_history5_scale45_std05_fresh_5k` 并运行同 seed hard suite；model2500 达到除 yaw 外全面超过旧 baseline，model3000 退化后于 iteration3040 early stop，checkpoint finite audit 通过。
+- [ ] 如用户需要视觉验收，为 model2500 生成固定 1× 时间尺度 MP4；不要用慢速逐步 Isaac GUI 速度判断控制频率。
+- [ ] 若继续优化 yaw，以 model2500 为 baseline 新开单变量实验；不得 resume 已退化的 model3000 或把当前 run 继续补到5000。
+- [x] 完成 model1000/model2000 同 seed 6×2 s diagnostics；确认相对失败 scale10/std1 明显改善，但 model2000 的 stand target error/saturation 与 yaw 尚未超过旧 scale45 baseline。
+- [ ] 在后续成熟 checkpoint/最终 model 上复测 stand saturation、wheel target error 与 yaw；若不下降，再评审站立轮目标/可达速度治理，不能仅凭总 reward 调整结论。
 - [ ] 仅当 normalized temporal policy 在当前 PhysX 重新训练后仍抖，再升级 MuJoCo/PhysX wheel-ground friction、external-loop/fixed-tendon residual/contact solver telemetry A/B。
 - [ ] 完成 `-0.02→-0.05→-0.1` 相同 fresh seed-42/4096-env/5k 的正式比较：前两档已健康完成并通过最终 checkpoint finite audit；第三档因用户释放服务器在 iteration 667 有意停止，仅有 model500，后续须 fresh 重跑 `-0.1`，再在共同 checkpoint 做 jitter/recovery 对比。最优档位仍为 `UNKNOWN`。
 - [x] 新训练已从 seed-42 新进程启动，同时加载 height default 与 yaw 大误差梯度语义；未 resume 旧 checkpoint。

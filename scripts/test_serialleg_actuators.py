@@ -112,7 +112,7 @@ def test_policy_action_contract_matches_robot_config() -> None:
     robot_config = yaml.safe_load(robot_config_path.read_text(encoding="utf-8"))
     groups = robot_config["joints"]["groups"]
     assert groups["legs"]["action_scale"] == 0.25
-    assert groups["wheels"]["action_scale"] == 10.0
+    assert groups["wheels"]["action_scale"] == 45.0
     assert '_LEG_ACTION_SCALE = _required_action_scale("legs")' in source
     assert '_WHEEL_ACTION_SCALE = _required_action_scale("wheels")' in source
     assert "leg_scale: float = _LEG_ACTION_SCALE" in source

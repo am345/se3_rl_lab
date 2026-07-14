@@ -3,22 +3,37 @@
 ## Current State
 
 - Last updated: 2026-07-14（Asia/Shanghai）
-- Workspace: 本机 `/home/am345/se3_rl_lab`；训练机 SSH alias `se3_rl_lab_gpufree`；远端根目录 `/root/gpufree-data/se3-workspace/se3_rl_lab`。
-- Git: 本地/远端 `main` 已发布 WebSim V2 父仓库提交 `2814dfd`，gitlink 锁定 submodule `main@416b534`。未跟踪 `artifacts/` 明确未提交。
-- Current objective: WebSim 按 V2 当前版本收口，下一步恢复训练端问题：评估 `model_4500.pt` 的抖动、recovery 与 tracking，并决定 incomplete 5k run 的处理方式。
-- Current status: WebSim V2 功能提交 `3303df8` 与发布记录 `416b534` 已推送到 submodule `main`；ORT WASM `26.8→13.48 MB`、dist `37→24 MB`，体验改造及完整验证均完成。训练端最后可用 `model_4500.pt`，原 run 停在 iteration 4760/5000，退出原因仍为 `UNKNOWN`。
+- Workspace: 本机 `/home/am345/se3_rl_lab`；训练机 SSH alias `se3_rl_lab_gpufree`；旧远端根目录 `/root/gpufree-data/se3-workspace/se3_rl_lab` 保持不动，本轮训练使用隔离快照 `/root/gpufree-data/se3-workspace/se3_rl_lab_scale45_std05`。
+- Git: 本地/远端 `main` 已发布 WebSim V2，父仓库 HEAD `411dfc5`（功能/gitlink `2814dfd`），submodule `main@416b534`。训练诊断源码与 handoff 为后续未提交改动；`artifacts/` 明确未提交。
+- Current objective: 已按用户确认阈值压缩 recovery root/joint/cache、velocity 与 push 五组课程，并完成静态与 RTX 4090 runtime gates；当前任务是提交、推送并合并到 `main`。
+- Current status: standard/joint/cache 分别在 iteration `900/700/1600` 达到最终难度，velocity/push 在 `1500/1750` 达到最终范围；建议 combined 训练预算 `2000–2200`。28 个聚焦测试、Ruff、64-env Recovery reset smoke 与 4-env flat curriculum smoke 均通过。
+
+## Early-Stopped Scale45/Std0.5 Training
+
+- Run: `2026-07-14_13-56-55_recovery_history5_scale45_std05_fresh_5k`
+- Remote root: `/root/gpufree-data/se3-workspace/se3_rl_lab_scale45_std05`；依赖解释器复用旧环境 `/root/gpufree-data/se3-workspace/se3_rl_lab/.venv/bin/python`，并以 `PYTHONPATH=<isolated-root>/source/se3_rl_lab` 锁定本轮源码。
+- Contract: `SerialLeg-Recovery-v0`、seed 42、4096 env、5000 iterations、24 steps/env、`resume=false`、wheel scale `45.0`、Recovery Gaussian `init_std=0.5`、actor/critic `138D/168D`。
+- Process/log: former PID/SID `2194` 已退出，训练机 GPU 回到约 66 MiB/0%；日志 `/tmp/recovery_history5_scale45_std05_fresh_5k.log`。
+- Run directory: `/root/gpufree-data/se3-workspace/se3_rl_lab_scale45_std05/logs/rsl_rl/serialleg_flat_closed_chain/2026-07-14_13-56-55_recovery_history5_scale45_std05_fresh_5k`。
+- Stop audit: iteration `3040/5000`、fatal count 0；SIGTERM 停止推进后 Isaac cleanup 未退出，SIGINT 2 秒内正常退出，未使用 SIGKILL。`model_2500.pt`/`model_3000.pt` 均已完整落盘。
+- Best checkpoint: local `artifacts/recovery_eval/hard-suite-scale45-std05/model_2500/model_2500.pt`，5,868,725 bytes，SHA256 `3488dfb7f72a41ed5add8c8e7a6a106f9c193a2a3e4f495d434186d909e7f397`；72 tensors/1,461,681 values 全 finite，checkpoint iter 2500。
+- Hard-suite result: model2500 1200 steps、0 termination/non-finite；vx/yaw/pitch/target-error/raw-action-delta/saturation 为 `0.16570/0.25178/0.49974/15.756/0.08270/2.46%`。相对同口径旧 model4000 分别为 `-6.0%/+13.0%/-3.8%/-6.8%/-44.0%/-29.8%`。
+- Rejected later checkpoint: model3000 同合同 yaw/target-error/raw-action-delta 相对 model2500 恶化 `38.6%/18.2%/62.8%`；不作为最佳，不 resume。
+- Recovery benchmark: standard/cache settled success 在 model500/1000/1500/2000/2500/3000 分别为 `0.39/0`、`98.05/98.44`、`99.22/99.61`、`99.61/100`、`98.05/100`、`99.22/99.61`%；当前 root/joint/cache 阈值明显晚于策略能力形成时间。
+- Training-time evidence: iteration1000/1500/2000/3040 实测 elapsed `31:01/47:34/1:03:21/1:41:33`；2000 相对原计划5000预计节省约60%，1500约70%。
+- Next action: 发布当前训练端改动到 `main`；下一轮 fresh run 使用 `2000–2200` 预算，并在 1000/1500/1800/2000 checkpoint 执行 recovery/tracking/push gates。视觉/部署候选仍暂用 model2500，不能把 recovery-only 最优自动等同于 tracking 最优。
 
 ## WebSim Active Boundary
 
 - Main repo owns: SerialLeg canonical MJCF/meshes、`robot_config.yaml`、observation/action/actuator truth、ONNX export metadata 与 launcher/documentation。
 - Submodule owns: Python local server、React UI、MuJoCo WASM、ONNX Runtime Web、three.js render、interaction、telemetry 和浏览器 runtime managers。
 - Integration contract: `se3_rl_lab.websim.deployment.v1`；禁止 submodule 通过 `../` import 父仓库源码，运行时必须显式接收 `run_root`/`asset_root`。
-- Immediate next step: WebSim 暂不继续扩展 visual bundle。转向训练端，先基于现有 `model_4500.pt` 补 pitch-rate、raw action、wheel target/velocity/torque saturation telemetry，再判断问题来自训练退化、wheel scale/std 合同还是需要重训。未经用户明确要求不得启动长训练。
+- Immediate next step: WebSim V2 保持当前版本；训练 GPU 已释放。若需要将新策略接入 WebSim，使用 model2500，不使用 model3000。
 - Active WebSim service: 2026-07-14 13:31 重新启动于 exec session `31838`，HTTP/1.1 页面/API 与真实 scale45 runtime canary 均通过。
-- Existing Recovery objective remains pending: `model_4500.pt` jitter/recovery/tracking 评估未取消，但本轮用户已切换到 WebSim 实施。
+- Recovery result: 旧 `model_4500.pt` 已由 scale45/std0.5 的 model2500 候选取代；失败 checkpoint 仅保留作历史对照。
 - Latest media handoff: 已生成并打开 `artifacts/recovery_eval/model4000-scale45-vs-model4500-scale10-side-by-side.mp4`（左：旧 model4000/scale45；右：当前 model4500/scale10；11.98 s、1280×360@50 FPS、599 frames，SHA256 `dedb56ad...fd2aa`）。旧单片位于 `artifacts/recovery_eval/model_4000-server-scale45/model_4000-scale45-isaac-eval.mp4`，当前单片位于 `artifacts/recovery_eval/model_4500-server/model_4500-isaac-eval.mp4`。
 
-## Incomplete Training
+## Historical Incomplete Scale-10/Std-1 Training
 
 - Former PID/session: remote PID `28576` 已退出；当前无该 run 训练进程。
 - Log: `/tmp/recovery_history5_wscale10_std1_fresh_5k.log`
@@ -26,9 +41,9 @@
 - Contract: seed 42、4096 env、5000 iterations、24 steps/env、`resume=false`、save interval 500、wheel action scale `10.0`、Recovery Gaussian `init_std=1.0`、actor groups `command+proprio`、critic `command+privileged`。
 - Checkpoints: `model_{0,500,...,4500}.pt` 已落盘；`model_4999.pt` 不存在。最后可用 `model_4500.pt` 为 5,868,725 bytes，SHA256 `168bd10af72c603586bcea760c6608c6ad5f731d48ab804be376d995fc2ed8c4`，本地路径 `artifacts/recovery_checkpoints/history5_wscale10_std1_fresh_5k/model_4500.pt`。
 
-## Active Local Isaac Sim Play
+## Historical Local Isaac Sim Play
 
-- 本机 PID `888603`、SID `888603`；命令为 `scripts/rsl_rl/play.py --task SerialLeg-Recovery-v0 --num_envs 1 --device cuda:0 --checkpoint .../model_4500.pt --show_colliders`。
+- Former local PID `888603` 已退出；命令为 `scripts/rsl_rl/play.py --task SerialLeg-Recovery-v0 --num_envs 1 --device cuda:0 --checkpoint .../model_4500.pt --show_colliders`。
 - Window: `Isaac Sim 5.1.0`，X11 window `0x320000b`，1440×975，Map State `IsViewable`；本机 RTX 5060 显存约 4,542 MiB。
 - Log: `/tmp/recovery_wscale10_std1_model4500_local_play.log`；模型加载成功，actor/critic 138D/168D，无 Traceback/OOM/assertion。既有 inotify `errno=28` watch-limit 噪声仍存在但未阻止 runtime。
 

@@ -230,9 +230,9 @@ def _validate_delayed_action_contract(env) -> None:
             raise RuntimeError(
                 f"active tendon target mismatch for {tendon.name}: {actual_coordinate} vs {expected_coordinate}"
             )
-    expected_wheel_targets = probe[:, 4:6] * 10.0
+    expected_wheel_targets = probe[:, 4:6] * 45.0
     if not torch.allclose(action_term.wheel_targets, expected_wheel_targets, atol=1.0e-6, rtol=0.0):
-        raise RuntimeError("wheel velocity target does not match the 10 rad/s policy scale")
+        raise RuntimeError("wheel velocity target does not match the 45 rad/s policy scale")
 
     extreme_probe = torch.zeros_like(probe)
     extreme_probe[:, 1] = 100.0
@@ -337,14 +337,14 @@ def _validate_mdp_contract(env) -> None:
         raise RuntimeError(f"unexpected curriculum terms: {env.curriculum_manager.active_terms}")
     curriculum_cfg = env.curriculum_manager.cfg.flat_velocity_and_push
     original_counter = env.common_step_counter
-    env.common_step_counter = 2000 * 64
+    env.common_step_counter = 1750 * 24
     curriculum_cfg.func(env, torch.arange(env.num_envs, device=env.device), **curriculum_cfg.params)
     command_cfg = env.command_manager.get_term("velocity_height").cfg
     if command_cfg.lin_vel_x_range != (-2.4, 2.4) or command_cfg.ang_vel_yaw_range != (-12.0, 12.0):
-        raise RuntimeError("velocity curriculum did not reach the final stage at policy iteration 2000")
+        raise RuntimeError("velocity curriculum did not reach the final stage by policy iteration 1750")
     push_range = env.event_manager.get_term_cfg("push_robot").params["velocity_range"]
-    if push_range != {"x": (-0.3, 0.3), "y": (-0.3, 0.3)}:
-        raise RuntimeError(f"push curriculum did not reach iteration-2000 stage: {push_range}")
+    if push_range != {"x": (-2.0, 2.0), "y": (-2.0, 2.0)}:
+        raise RuntimeError(f"push curriculum did not reach the final stage by iteration 1750: {push_range}")
     env.common_step_counter = original_counter
     curriculum_cfg.func(env, torch.arange(env.num_envs, device=env.device), **curriculum_cfg.params)
 
@@ -470,7 +470,7 @@ def main() -> int:
             )
         if not torch.allclose(action_term.processed_actions, action_term.raw_actions, atol=0.0, rtol=0.0):
             raise RuntimeError("one-step FIFO did not expose the latest action by the end of decimation")
-        if action_term.cfg.leg_scale != 0.25 or action_term.cfg.wheel_scale != 10.0:
+        if action_term.cfg.leg_scale != 0.25 or action_term.cfg.wheel_scale != 45.0:
             raise RuntimeError(
                 f"policy scales changed: leg={action_term.cfg.leg_scale} wheel={action_term.cfg.wheel_scale}"
             )

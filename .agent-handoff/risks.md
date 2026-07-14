@@ -1,5 +1,15 @@
 # Risks, Blockers, And Unknowns
 
+## 2026-07-14 early-stopped scale45/std0.5 run
+
+- run 已于 iteration3040 按 hard-suite early-stop，不是异常退出也不是完整5000。model2500 是当前最佳；model3000 已证明行为退化，不得按“更晚 checkpoint 更好”误选或 resume。
+- model2500 相对旧 model4000 的 hard-suite yaw RMSE 仍高 13%，最差来自初始 stand/recovery 段 yaw 波动；不能表述为所有控制指标均超过 baseline。其余总体指标已改善，移动五场景 torque saturation 为0。
+- 原 fixed-command hard suite 为固定 seed47/单次 iteration0 Recovery 初态，只适合 tracking A/B，不能作为 recovery success。新增专项 benchmark 已扩为每 cohort 256 个随机初态并拆分满难度 standard/held-out cache，但仍是单 seed、无 interval push、零速度命令；发布前仍需多 seed、受扰恢复、tracking 与视觉验收。
+- recovery/velocity/push 五组课程已按用户确认表压缩并通过配置/runtime gate，但专项效果数据只直接证明 recovery reset 可压缩；velocity/push 的学习稳定性尚未由 fresh run 证明。下一轮必须在1000/1500/1800/2000 checkpoint执行 tracking与受扰 recovery gate，阶段退化时早停或回退，不能把“配置可运行”表述为“最终策略已通过”。
+- 当前 eval worker 即使 `--no-video` 仍强制 camera/rendering、collision preview 和 `use_fabric=False`；本机约 `0.013×` 实时速度，不是 1× 播放。后续值守评估优先使用远端 headless，并在 checkpoint 边界短暂停训练以避免 GPU 竞争。
+- 训练运行在隔离源码根，依赖解释器来自旧仓库 `.venv`，并由 `PYTHONPATH` 优先加载隔离源码；gate 与正式 iteration 0 已证明该组合可运行。隔离根没有 `.git`，RSL-RL 因此无法自动保存仓库 diff；本地未提交源码与 handoff 是可追溯真值，提交前不得误称远端 run 可由 commit 单独复现。
+- 旧远端仓库存在用户/历史未提交改动，未被 pull/reset/覆盖。远端 Git proxy `127.0.0.1:7890` 当前不可用且远端未安装 rsync；后续若重新同步，继续使用隔离根并核对源码/合同 hash，不能就地覆盖 active run。
+
 ## 2026-07-14 WebSim submodule 风险
 
 - V2 已将 ORT WASM `26.8→13.48 MB`、dist `37→24 MB`，并加入 HTTP/1.1/cache/prewarm；但 visual scene 仍为 78 files/15.3 MB，真实浏览器 cold/warm load 与 sustained FPS 仍为 `UNKNOWN`，不能只凭 Node canary 宣称加载问题完全解决。
@@ -16,6 +26,8 @@
 - 两份闭链模型的核心 dynamics/contact/equality/tendon 数组已证明一致，因此“浏览器用了错误质量/惯量/摩擦资产”风险已降级；但 fallen reset 的 floor clearance、joint randomization 与 closure velocity 仍不等价，恢复场景的初态分布 gap 继续存在。
 
 ## 2026-07-14 wheel-scale-10/std-1 run 未完成风险
+
+- 新同合同诊断显示 model4500 raw wheel action delta 为旧 model4000 的 `10.75×`，换算物理 wheel-target delta仍为 `2.39×`；torque saturation 并未增加。scale10 迫使相同物理指令使用更大 raw output，并经五帧 `last_actions` 回灌；同时 std1 run 的最终 wheel std 约 `0.467`（旧约 `0.323`）。两项同时改变，仍不能单独归因其中一个，但继续原样训练没有证据支持。
 
 - run `2026-07-13_19-43-59_recovery_history5_wscale10_std1_fresh_5k` 的进程已退出，日志最后为 iteration 4760/5000，未生成 `model_4999.pt`；日志没有 Traceback/OOM/NaN，精确退出原因为 `UNKNOWN`。不得将 `model_4500.pt` 表述为完整 5k final checkpoint。
 - `model_4500.pt` 已完成远端/本地 SHA 一致性与 72 tensors finite audit，可作为最后可用评估候选；但若 resume，optimizer、curriculum 和总 transition 连续性必须单独核对，不能默认等价于不间断 fresh 5k。
