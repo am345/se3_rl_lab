@@ -8,6 +8,7 @@
 - scale10 与 scale45 ONNX metadata 已刷新到新 asset fingerprint `2e07880b...d5dbb`；scale45 保持 wheel scale 45，SHA256 更新为 `011b41f2...e2ce6`。真实 HTTP 25 cycles/0.5 s 全 finite，最大 closure residual `5.381 mm < 6 mm`；服务仍位于 `http://127.0.0.1:2705/websim/`。
 - submodule 功能/发布记录已推送到 `origin/codex/bootstrap-websim`（`be0fb2e`、`80a1153`）；父仓库 Recovery history + WebSim 集成提交 `d9afe2a` 已推送到 `origin/codex/height-conditioned-recovery`。`artifacts/` 未纳入提交。
 - submodule `main` 已 fast-forward 到 `80a1153`，随后以接力记录提交更新到 `be736cf` 并推送；父仓库 gitlink 同步到该 main HEAD。
+- 父仓库 `main` 已由 `25251c1` fast-forward 到 `994f1c7` 并推送，无冲突；包含完整 Recovery history、WebSim 集成与 submodule main gitlink。
 
 ## 2026-07-14 对照 se3_rl 正常 sim2sim
 
