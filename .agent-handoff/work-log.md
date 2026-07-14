@@ -6,6 +6,7 @@
 - `control.ts` 仅对连续 LF0/RF0 使用 shortest-angle PD error；共享 JSON fixture 同时由 native Python 与 browser Vitest 验证跨 ±π 和多圈输入。
 - `scripts/build_websim_scene.py` 与生成 `scene.xml` 显式锁 `implicitfast`、Newton、100 iterations。fallen reset 依据 compiled mesh/primitive collision geom 最低点整体上抬到 10 mm，HTTP canary 直接断言 clearance。
 - scale10 与 scale45 ONNX metadata 已刷新到新 asset fingerprint `2e07880b...d5dbb`；scale45 保持 wheel scale 45，SHA256 更新为 `011b41f2...e2ce6`。真实 HTTP 25 cycles/0.5 s 全 finite，最大 closure residual `5.381 mm < 6 mm`；服务仍位于 `http://127.0.0.1:2705/websim/`。
+- submodule 功能/发布记录已推送到 `origin/codex/bootstrap-websim`（`be0fb2e`、`80a1153`）；父仓库 Recovery history + WebSim 集成提交 `d9afe2a` 已推送到 `origin/codex/height-conditioned-recovery`。`artifacts/` 未纳入提交。
 
 ## 2026-07-14 对照 se3_rl 正常 sim2sim
 
