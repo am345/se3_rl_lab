@@ -9,6 +9,7 @@
 - 测评过程中先后修复诊断脚本的两个配置契约：保留 `push_robot` 供 curriculum manager 查找但把 interval 放到窗口外；对 RSL-RL 5.0.1 调用 `handle_deprecated_rsl_rl_cfg`。结果与复现说明在 `artifacts/recovery_eval/recovery-benchmark/README.md`。
 - 用户确认采用压缩方案后，生产阈值已更新：standard root `0/150/350/650/900`，joint `0/150/300/500/700`，cache `0/500/700/900/1150/1400/1600`，velocity `0/300/600/900/1200/1500`，push `0/400/750/1100/1450/1750`；范围/比例值保持此前确认表不变。
 - `scripts/test_recovery_contract.py` 锁定五组精确阈值，Recovery/flat runtime smoke 同步新最终阶段。聚焦 pytest `28 passed`、Ruff clean；远端 64-env iteration1600 reset smoke exit0，4-env flat smoke确认 iteration1750 已到 `vx±2.4/yaw±12/push±2.0` 且 rollout finite。
+- 发布分支 `agent/compress-recovery-curriculum` 提交 `7dc5913`，PR #10 在无远端 checks/冲突、`MERGEABLE/CLEAN` 状态下 merge；merge commit `917b7c5` 已同步到本地与 `origin/main`。`artifacts/` 未纳入提交。
 
 ## 2026-07-14 每 checkpoint 困难评估与 model2500 早停
 

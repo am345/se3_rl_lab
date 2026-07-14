@@ -4,9 +4,9 @@
 
 - Last updated: 2026-07-14（Asia/Shanghai）
 - Workspace: 本机 `/home/am345/se3_rl_lab`；训练机 SSH alias `se3_rl_lab_gpufree`；旧远端根目录 `/root/gpufree-data/se3-workspace/se3_rl_lab` 保持不动，本轮训练使用隔离快照 `/root/gpufree-data/se3-workspace/se3_rl_lab_scale45_std05`。
-- Git: 本地/远端 `main` 已发布 WebSim V2，父仓库 HEAD `411dfc5`（功能/gitlink `2814dfd`），submodule `main@416b534`。训练诊断源码与 handoff 为后续未提交改动；`artifacts/` 明确未提交。
-- Current objective: 已按用户确认阈值压缩 recovery root/joint/cache、velocity 与 push 五组课程，并完成静态与 RTX 4090 runtime gates；当前任务是提交、推送并合并到 `main`。
-- Current status: standard/joint/cache 分别在 iteration `900/700/1600` 达到最终难度，velocity/push 在 `1500/1750` 达到最终范围；建议 combined 训练预算 `2000–2200`。28 个聚焦测试、Ruff、64-env Recovery reset smoke 与 4-env flat curriculum smoke 均通过。
+- Git: 训练合同、评估 telemetry 与压缩课程已通过 PR #10 合并到本地/远端 `main@917b7c5`；submodule 保持 `main@416b534`。未跟踪 `artifacts/` 明确未提交。
+- Current objective: 压缩课程实现与发布已完成；下一步等待用户决定何时按新 `2000–2200` 预算启动 fresh training。
+- Current status: standard/joint/cache 分别在 iteration `900/700/1600` 达到最终难度，velocity/push 在 `1500/1750` 达到最终范围。28 个聚焦测试、Ruff、64-env Recovery reset smoke 与 4-env flat curriculum smoke 均通过；PR #10 已 merge，远端 `main` 已核对。
 
 ## Early-Stopped Scale45/Std0.5 Training
 
@@ -21,7 +21,7 @@
 - Rejected later checkpoint: model3000 同合同 yaw/target-error/raw-action-delta 相对 model2500 恶化 `38.6%/18.2%/62.8%`；不作为最佳，不 resume。
 - Recovery benchmark: standard/cache settled success 在 model500/1000/1500/2000/2500/3000 分别为 `0.39/0`、`98.05/98.44`、`99.22/99.61`、`99.61/100`、`98.05/100`、`99.22/99.61`%；当前 root/joint/cache 阈值明显晚于策略能力形成时间。
 - Training-time evidence: iteration1000/1500/2000/3040 实测 elapsed `31:01/47:34/1:03:21/1:41:33`；2000 相对原计划5000预计节省约60%，1500约70%。
-- Next action: 发布当前训练端改动到 `main`；下一轮 fresh run 使用 `2000–2200` 预算，并在 1000/1500/1800/2000 checkpoint 执行 recovery/tracking/push gates。视觉/部署候选仍暂用 model2500，不能把 recovery-only 最优自动等同于 tracking 最优。
+- Next action: 下一轮 fresh run 使用 `2000–2200` 预算，并在 1000/1500/1800/2000 checkpoint 执行 recovery/tracking/push gates。视觉/部署候选仍暂用 model2500，不能把 recovery-only 最优自动等同于 tracking 最优。
 
 ## WebSim Active Boundary
 

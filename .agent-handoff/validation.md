@@ -2,6 +2,7 @@
 
 | Date | Command/Check | Result | Notes |
 | --- | --- | --- | --- |
+| 2026-07-14 | PR #10 publish/merge + local/remote main audit | passed | 功能提交 `7dc5913`，merge commit `917b7c5`；PR state `MERGED`，本地 `main` 与 `origin/main` 一致，只有明确排除的未跟踪 `artifacts/`。 |
 | 2026-07-14 | compressed curriculum focused pytest + Ruff | passed | `.venv/bin/python -m pytest -q scripts/test_recovery_contract.py scripts/test_experiment_tools.py scripts/test_serialleg_actuators.py` 为 `28 passed`；五个改动 Python 文件 Ruff clean。 |
 | 2026-07-14 | RTX4090 `smoke_recovery_reset.py --num-envs 64 --iteration 1600 --steps 4` | passed | exit0；新课程 iteration1600 的70% cache与满 root/joint reset 合同通过，无 runtime exception。 |
 | 2026-07-14 | RTX4090 4-env flat task smoke，iteration1750 curriculum probe | passed | exit0；最终 velocity `±2.4/±12` 与 push `±2.0` 断言通过，zero/controlled rollout finite，loop residual `<0.095 mm`。 |
