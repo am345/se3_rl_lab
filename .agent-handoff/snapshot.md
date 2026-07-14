@@ -4,17 +4,17 @@
 
 - Last updated: 2026-07-14（Asia/Shanghai）
 - Workspace: 本机 `/home/am345/se3_rl_lab`；训练机 SSH alias `se3_rl_lab_gpufree`；远端根目录 `/root/gpufree-data/se3-workspace/se3_rl_lab`。
-- Git: 本地已切到 `main`；`codex/height-conditioned-recovery` 已 fast-forward 合并并推送到 `origin/main`（功能线至 `994f1c7`）。submodule `main` 为 `be736cf`。未跟踪 `artifacts/` 明确未提交。
-- Current objective: 修复 scale45 browser runtime 与正常 native MuJoCo sim2sim 的四项已证实语义差异，并完成跨端、构建和真实 HTTP 验证。
-- Current status: 已完成并发布：free-joint body-frame observation、LF0/RF0 shortest-angle PD、`implicitfast + Newton + 100 iterations` scene 与 10 mm floor-aware fallen reset。native/browser fixture、父仓库 5 tests、submodule 8 pytest、前端 8 unit tests、typecheck/build 与真实 scale45 HTTP fallen 25-cycle rollout均通过。
+- Git: 本地 `main`；WebSim V2 已发布到 submodule `main@416b534`，父仓库 gitlink/接力记录待本次提交推送。未跟踪 `artifacts/` 明确不提交。
+- Current objective: WebSim 按 V2 当前版本收口，下一步恢复训练端问题：评估 `model_4500.pt` 的抖动、recovery 与 tracking，并决定 incomplete 5k run 的处理方式。
+- Current status: WebSim V2 功能提交 `3303df8` 与发布记录 `416b534` 已推送到 submodule `main`；ORT WASM `26.8→13.48 MB`、dist `37→24 MB`，体验改造及完整验证均完成。训练端最后可用 `model_4500.pt`，原 run 停在 iteration 4760/5000，退出原因仍为 `UNKNOWN`。
 
 ## WebSim Active Boundary
 
 - Main repo owns: SerialLeg canonical MJCF/meshes、`robot_config.yaml`、observation/action/actuator truth、ONNX export metadata 与 launcher/documentation。
 - Submodule owns: Python local server、React UI、MuJoCo WASM、ONNX Runtime Web、three.js render、interaction、telemetry 和浏览器 runtime managers。
 - Integration contract: `se3_rl_lab.websim.deployment.v1`；禁止 submodule 通过 `../` import 父仓库源码，运行时必须显式接收 `run_root`/`asset_root`。
-- Immediate next step: 请用户刷新 `http://127.0.0.1:2705/websim/` 目视验收修复后的 scale45 行为；若仍抖，下一步记录相同命令下的 raw action、front-joint wrap、wheel target/velocity/torque 与 pitch-rate，而不是继续猜摩擦。未经用户明确要求不得 commit/push。
-- Active WebSim service: 2026-07-14 13:01 重新启动于 exec session `88574`，`/websim/` 与 `/api/websim/models` 均返回 HTTP 200；旧 session `27940` 已停止。
+- Immediate next step: WebSim 暂不继续扩展 visual bundle。转向训练端，先基于现有 `model_4500.pt` 补 pitch-rate、raw action、wheel target/velocity/torque saturation telemetry，再判断问题来自训练退化、wheel scale/std 合同还是需要重训。未经用户明确要求不得启动长训练。
+- Active WebSim service: 2026-07-14 13:31 重新启动于 exec session `31838`，HTTP/1.1 页面/API 与真实 scale45 runtime canary 均通过。
 - Existing Recovery objective remains pending: `model_4500.pt` jitter/recovery/tracking 评估未取消，但本轮用户已切换到 WebSim 实施。
 - Latest media handoff: 已生成并打开 `artifacts/recovery_eval/model4000-scale45-vs-model4500-scale10-side-by-side.mp4`（左：旧 model4000/scale45；右：当前 model4500/scale10；11.98 s、1280×360@50 FPS、599 frames，SHA256 `dedb56ad...fd2aa`）。旧单片位于 `artifacts/recovery_eval/model_4000-server-scale45/model_4000-scale45-isaac-eval.mp4`，当前单片位于 `artifacts/recovery_eval/model_4500-server/model_4500-isaac-eval.mp4`。
 

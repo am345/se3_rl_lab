@@ -2,7 +2,9 @@
 
 ## 2026-07-14 WebSim submodule 风险
 
-- `am345/websim_se3` 已从零创建为 private、`isFork=false`；当前只有初始化提交，功能改动尚未 commit/push，因此父仓库 gitlink 仍指向 bootstrap 前基线。
+- V2 已将 ORT WASM `26.8→13.48 MB`、dist `37→24 MB`，并加入 HTTP/1.1/cache/prewarm；但 visual scene 仍为 78 files/15.3 MB，真实浏览器 cold/warm load 与 sustained FPS 仍为 `UNKNOWN`，不能只凭 Node canary 宣称加载问题完全解决。
+
+- `am345/websim_se3` 为独立 private、`isFork=false`；V2 已发布到 `main@416b534`，父仓库必须锁定该 gitlink，不得回退到旧基线。
 - 用户要求 submodule 文件不得出现参考仓库字样；每轮 closeout 必须运行全仓禁用词搜索，包含文档、源码、lockfile 和生成配置。
 - 当前 `artifacts/recovery_checkpoints/history5_wscale10_std1_fresh_5k/exported/policy.onnx` 已补 `se3_rl_lab.websim.deployment.v1` 与最新视觉资产 fingerprint，可建立正式 session；其他旧 artifact 仍可能缺 metadata，不能假设全部兼容。
 - height default/motor envelope/history/delay 已有跨端 golden，fallen/finite/residual 已有 0.5 s HTTP canary；但 control noise/encoder bias、较长 recovery 和图形浏览器交互仍未验收，暂不能称为生产 sim2sim 对齐。

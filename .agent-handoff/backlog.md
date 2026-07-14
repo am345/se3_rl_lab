@@ -37,6 +37,8 @@
 - [x] 将 LF0/RF0 腿 PD error 改为 shortest-angle periodic error，并用共享 JSON fixture 完成 native/browser 跨端对拍。
 - [x] 在 scene contract 中显式锁 `integrator=implicitfast`、Newton、iterations=100，并完成 scene 静态 gate 与真实 HTTP rollout。
 - [x] fallen reset 改为 compiled collision geom floor-aware 10 mm clearance；standing 闭链姿态经刚体旋转且速度清零，HTTP reset clearance/residual gate 通过。
+- [x] 完成 WebSim 产品体验 V2 第一轮：ORT 包体减半、runtime 预热/进度/cache/streaming、键盘/preset/倍率/相机/轨道交互、action telemetry 和控制台 UI。
+- [ ] 用户目视验收 V2 的冷/热加载、键鼠/按钮、resize、错误态和视觉；若冷加载仍慢，合并 visual asset bundle、预生成 gzip/brotli 并记录分阶段耗时/FPS。
 - [ ] 若需严格复现训练 recovery 分布，继续加入 joint/root 随机化和独立 position/velocity closure fixture；当前确定性 fallen canary 不覆盖该分布。
 - [ ] 用 `model_4500.pt` 验收站立 4–5 Hz telemetry、wheel saturation、recovery success 和移动 tracking；如用户要求完整 5k，再决定 resume 或 fresh 重跑，不能把 4500 误称为 final 4999。
 - [ ] 仅当 normalized temporal policy 在当前 PhysX 重新训练后仍抖，再升级 MuJoCo/PhysX wheel-ground friction、external-loop/fixed-tendon residual/contact solver telemetry A/B。

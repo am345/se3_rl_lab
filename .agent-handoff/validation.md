@@ -2,6 +2,10 @@
 
 | Date | Command/Check | Result | Notes |
 | --- | --- | --- | --- |
+| 2026-07-14 | submodule V2 scoped commit + direct `main` push | passed | 功能 `3303df8`、发布记录 `416b534` 均已推送到 `am345/websim_se3 main`。 |
+| 2026-07-14 | WebSim V2 backend/frontend/build | passed | backend 8、frontend unit 8、typecheck/build；dist 24 MB，ORT WASM 13.48 MB。 |
+| 2026-07-14 | WebSim V2 scale45 real HTTP canary | passed | frontend 共 9 tests，fallen 25 cycles/0.5 s finite/residual gate 通过。 |
+| 2026-07-14 | restarted V2 server + header/page probes + `xdg-open` | passed | session `31838`，HTTP/1.1 200、ETag/cache header 生效，新页面已打开。 |
 | 2026-07-14 | parent `git checkout main && git merge --ff-only codex/height-conditioned-recovery && git push origin main` | passed | `main` 从 `25251c1` fast-forward 到 `994f1c7`，无冲突；远端更新成功。checkout 曾提示无法删除非空 `websim_se3`，原因是本地已初始化 submodule，未影响 gitlink 或 merge。 |
 | 2026-07-14 | submodule `main` fast-forward + push | passed | `websim_se3/main` 从 `f0234cb` 合并到功能线并以 handoff closeout 更新至 `be736cf`；远端 main 与本地一致。 |
 | 2026-07-14 | submodule + parent scoped commit/push | passed | submodule `be0fb2e` + handoff `80a1153` 推送至 `origin/codex/bootstrap-websim`；父仓库功能提交 `d9afe2a` 推送至 `origin/codex/height-conditioned-recovery`；`artifacts/` 排除。首次 submodule commit 因缺少 identity 被拒，沿用既有作者写入 repo-local config 后成功。 |
